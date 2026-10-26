@@ -1,0 +1,15 @@
+{
+  "name": "Cleomania",
+  "short_name": "Cleomania",
+  "description": "Retro bike racing with a kid trailer through the Alps, forest, desert and coast.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "fullscreen",
+  "orientation": "landscape",
+  "background_color": "#14141f",
+  "theme_color": "#14141f",
+  "icons": [
+    { "src": "icon.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "apple-touch-icon.png", "sizes": "180x180", "type": "image/png" }
+  ]
+}
