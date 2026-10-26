@@ -606,11 +606,20 @@ function tapScreen(){
 }
 cv.addEventListener('pointerdown',e=>{e.preventDefault();audio();tapScreen();});
 addEventListener('contextmenu',e=>e.preventDefault());
-// iOS Safari ignores user-scalable=no; two thumbs on gas+flip would otherwise pinch-zoom
-['gesturestart','gesturechange','gestureend'].forEach(ev=>document.addEventListener(ev,e=>e.preventDefault(),{passive:false}));
-document.addEventListener('touchmove',e=>{if(e.touches.length>1||(e.scale&&e.scale!==1))e.preventDefault();},{passive:false});
-let lastTouchEnd=0;
-document.addEventListener('touchend',e=>{const n=Date.now();if(n-lastTouchEnd<300)e.preventDefault();lastTouchEnd=n;},{passive:false});
+// iOS Safari ignores user-scalable=no and only partly honours touch-action, so pinch, double-tap
+// and long-press can still zoom. Cancelling every touch at its start stops all native gestures;
+// the game only reads pointer events, which still fire.
+const noGesture=e=>{if(e.cancelable)e.preventDefault();};
+document.addEventListener('touchstart',noGesture,{passive:false});
+document.addEventListener('touchmove',noGesture,{passive:false});
+['gesturestart','gesturechange','gestureend','dblclick'].forEach(ev=>document.addEventListener(ev,noGesture,{passive:false}));
+// safety net: if the page still ends up zoomed, rewriting the viewport meta snaps iOS back to 1x
+const vpMeta=document.querySelector('meta[name=viewport]'),vpBase=vpMeta.content;
+if(window.visualViewport)visualViewport.addEventListener('resize',()=>{
+  if(visualViewport.scale<=1.01)return;
+  vpMeta.content=vpBase.replace('maximum-scale=1','maximum-scale=1.01');
+  requestAnimationFrame(()=>{vpMeta.content=vpBase;});
+});
 addEventListener('keydown',e=>{
   const k=e.key;audio();
   if(k==='ArrowRight'||k==='d'||k==='D'){input.gas=true;e.preventDefault();}
