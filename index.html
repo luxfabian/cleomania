@@ -459,10 +459,19 @@ function pop(t,c){popups.push({t,c,a:0});if(popups.length>4)popups.shift();}
 // ================= sound =================
 let actx=null,muted=false;
 try{muted=localStorage.getItem('cleomania_mute')==='1';}catch(e){}
+// iOS: 'playback' session ignores the ring/silent switch (Safari 17+)
+try{if(navigator.audioSession)navigator.audioSession.type='playback';}catch(e){}
 function audio(){
   if(!actx){try{actx=new (window.AudioContext||window.webkitAudioContext)();}catch(e){}}
-  if(actx&&actx.state==='suspended')actx.resume();
+  if(!actx||actx.state==='running')return;
+  // iOS also uses 'interrupted' (calls, app switch); resume anything not running
+  try{actx.resume();}catch(e){}
+  // older iOS only unlocks after a buffer is played inside the gesture
+  try{const s=actx.createBufferSource();s.buffer=actx.createBuffer(1,1,22050);s.connect(actx.destination);s.start(0);}catch(e){}
 }
+// iOS doesn't grant audio unlock on pointerdown/touchstart, only on touchend/click
+['touchend','click'].forEach(ev=>addEventListener(ev,audio,{capture:true,passive:true}));
+document.addEventListener('visibilitychange',()=>{if(!document.hidden&&actx&&actx.state!=='running')actx.resume().catch(()=>{});});
 function tone(f,d,o={}){
   if(muted||!actx)return;
   const t=actx.currentTime+(o.at||0),os=actx.createOscillator(),g=actx.createGain();
