@@ -462,7 +462,9 @@ try{muted=localStorage.getItem('cleomania_mute')==='1';}catch(e){}
 // iOS: 'playback' session ignores the ring/silent switch (Safari 17+)
 try{if(navigator.audioSession)navigator.audioSession.type='playback';}catch(e){}
 function audio(){
-  if(!actx){try{actx=new (window.AudioContext||window.webkitAudioContext)();}catch(e){}}
+  if(!actx){try{actx=new (window.AudioContext||window.webkitAudioContext)();}catch(e){}
+    // fresh context after backgrounding: bring the music back if it should be playing
+    if(actx&&typeof state!=='undefined'&&state!=='title'&&state!=='paused')musicStart();}
   if(!actx||actx.state==='running')return;
   // iOS also uses 'interrupted' (calls, app switch); resume anything not running
   try{actx.resume();}catch(e){}
@@ -471,7 +473,13 @@ function audio(){
 }
 // iOS doesn't grant audio unlock on pointerdown/touchstart, only on touchend/click
 ['touchend','click'].forEach(ev=>addEventListener(ev,audio,{capture:true,passive:true}));
-document.addEventListener('visibilitychange',()=>{if(!document.hidden&&actx&&actx.state!=='running')actx.resume().catch(()=>{});});
+// iOS leaves a backgrounded context 'interrupted' and often never resumes it,
+// so drop it when hidden and let the next tap create a fresh one
+document.addEventListener('visibilitychange',()=>{
+  if(!document.hidden||!actx)return;
+  musicStop();try{actx.close();}catch(e){}
+  actx=null;mBus=pBus=noiseBuf=null;
+});
 function tone(f,d,o={}){
   if(muted||!actx)return;
   const t=actx.currentTime+(o.at||0),os=actx.createOscillator(),g=actx.createGain();
@@ -493,31 +501,56 @@ function sfx(n){
 }
 
 
-// ================= music: 16-bit house loop (124 BPM, Am - F - C - G) =================
+// ================= music: 16-bit French house, 3 tracks (one per run) =================
 let musicOn=true;try{musicOn=localStorage.getItem('cleomania_music')!=='0';}catch(e){}
-let mBus=null,noiseBuf=null,mTimer=null,mNext=0,mStep=0;
-const BPM=124,S16=60/BPM/4;
+let mBus=null,pBus=null,noiseBuf=null,mTimer=null,mNext=0,mStep=0,trk=0,S16=0;
 const mf=m=>440*Math.pow(2,(m-69)/12);
-const PROG=[{r:45,c:[57,60,64]},{r:41,c:[57,60,65]},{r:48,c:[55,60,64]},{r:43,c:[55,59,62]}];
-const MEL=[
- [[0,76,2],[3,72,1],[6,76,2],[8,81,3],[12,79,2],[14,76,2]],
- [[0,77,2],[3,76,1],[6,72,2],[8,69,4],[12,72,2],[14,74,2]],
- [[0,79,3],[4,76,2],[6,79,2],[8,84,4],[12,83,2],[14,79,2]],
- [[0,74,2],[3,71,1],[6,74,2],[8,79,5],[14,81,2]],
+// prog: bass root + chord voicing per bar; bass: [step,interval,len]; mel: 4 bars of [step,note,len]
+const TRACKS=[
+ {bpm:123,lead:'robot',leadFrom:8,cut:[450,3800],pump:0.15,  // "One More Time" vibe: Dm7 - G7 - Cmaj7 - Am7
+  prog:[{r:38,c:[62,65,69,72]},{r:43,c:[62,65,67,71]},{r:36,c:[60,64,67,71]},{r:45,c:[60,64,67,69]}],
+  bass:[[0,0,2],[3,12,1],[4,0,1],[6,0,1],[7,12,1],[10,0,2],[12,7,1],[14,12,1],[15,10,1]],
+  stabs:[2,5,8,10,13],
+  mel:[[[0,74,2],[2,77,2],[4,81,3],[8,79,1],[10,77,2],[12,74,3]],
+       [[0,74,1],[2,71,2],[4,74,2],[6,77,2],[8,79,4],[14,77,1]],
+       [[0,76,3],[4,79,2],[6,76,1],[8,72,3],[12,74,1],[14,76,2]],
+       [[0,72,2],[3,69,2],[6,72,1],[8,76,5],[14,74,2]]]},
+ {bpm:112,lead:'acid',leadFrom:4,cut:[350,1800],pump:0.3,    // "Da Funk" vibe: squelchy acid hook in G minor
+  prog:[{r:43,c:[55,58,62,65]},{r:43,c:[55,58,62,65]},{r:36,c:[55,58,60,63]},{r:38,c:[54,57,60,62]}],
+  bass:[[0,0,3],[4,0,1],[6,12,1],[8,0,2],[11,0,1],[12,12,1],[14,10,2]],
+  stabs:[6,14],
+  mel:[[[0,55,2],[2,58,1],[3,62,2],[6,65,1],[7,62,1],[8,67,3],[12,65,1],[14,62,2]],
+       [[0,55,1],[2,55,1],[3,58,2],[6,60,1],[8,62,4],[13,58,1],[14,60,2]],
+       [[0,60,2],[2,63,1],[3,67,2],[6,63,1],[8,70,3],[12,67,2],[14,63,2]],
+       [[0,62,3],[4,66,2],[6,69,2],[8,62,2],[10,60,2],[12,57,2],[14,54,2]]]},
+ {bpm:118,lead:'soft',leadFrom:8,cut:[700,4200],pump:0.25,arp:true, // "Digital Love" vibe: Bbmaj7 - Am7 - Gm7 - C7
+  prog:[{r:46,c:[62,65,69,70]},{r:45,c:[60,64,67,69]},{r:43,c:[58,62,65,67]},{r:36,c:[58,60,64,67]}],
+  bass:[[0,0,2],[2,12,1],[4,0,1],[6,7,1],[8,0,2],[10,12,1],[12,10,1],[14,7,2]],
+  stabs:[2,6,10,14],
+  mel:[[[0,77,3],[4,76,1],[6,77,2],[8,81,4],[14,79,2]],
+       [[0,76,3],[4,72,2],[6,76,2],[8,79,6]],
+       [[0,74,2],[2,77,2],[4,81,2],[6,79,2],[8,77,4],[12,74,2],[14,72,2]],
+       [[0,76,4],[4,79,4],[8,84,6],[14,82,2]]]},
 ];
 function musicInit(){
   if(mBus||!actx)return;
   const comp=actx.createDynamicsCompressor();comp.threshold.value=-14;comp.ratio.value=4;
   mBus=actx.createGain();mBus.gain.value=0.5;mBus.connect(comp);comp.connect(actx.destination);
+  pBus=actx.createGain();pBus.connect(mBus);                     // sidechain-pumped bus for chords
   noiseBuf=actx.createBuffer(1,Math.floor(actx.sampleRate*0.5),actx.sampleRate);
   const d=noiseBuf.getChannelData(0);for(let i=0;i<d.length;i++)d[i]=Math.random()*2-1;
 }
-function mNote(t,m,d,type,vol,cut){
-  const o=actx.createOscillator(),g=actx.createGain();
-  o.type=type;o.frequency.setValueAtTime(mf(m),t);
+function mNote(t,m,d,type,vol,cut,o={}){
+  const os=actx.createOscillator(),g=actx.createGain(),f=mf(m);
+  os.type=type;os.detune.value=o.det||0;
+  if(o.glide){os.frequency.setValueAtTime(f*0.94,t);os.frequency.exponentialRampToValueAtTime(f,t+o.glide);}
+  else os.frequency.setValueAtTime(f,t);
   g.gain.setValueAtTime(0.0001,t);g.gain.linearRampToValueAtTime(vol,t+0.004);g.gain.exponentialRampToValueAtTime(0.0001,t+d);
-  if(cut){const f=actx.createBiquadFilter();f.type='lowpass';f.frequency.value=cut;o.connect(f);f.connect(g);}else o.connect(g);
-  g.connect(mBus);o.start(t);o.stop(t+d+0.03);
+  if(cut){const fl=actx.createBiquadFilter();fl.type='lowpass';fl.Q.value=o.q||1;
+    if(o.env){fl.frequency.setValueAtTime(cut*o.env,t);fl.frequency.exponentialRampToValueAtTime(cut,t+Math.min(d,0.18));} // filter "squelch"
+    else fl.frequency.value=cut;
+    os.connect(fl);fl.connect(g);}else os.connect(g);
+  g.connect(o.bus||mBus);os.start(t);os.stop(t+d+0.03);
 }
 function mNoise(t,d,vol,type,freq){
   const src=actx.createBufferSource(),f=actx.createBiquadFilter(),g=actx.createGain();
@@ -530,25 +563,34 @@ function mKick(t){
   o.type='sine';o.frequency.setValueAtTime(150,t);o.frequency.exponentialRampToValueAtTime(45,t+0.12);
   g.gain.setValueAtTime(0.9,t);g.gain.exponentialRampToValueAtTime(0.0001,t+0.22);
   o.connect(g);g.connect(mBus);o.start(t);o.stop(t+0.25);
+  pBus.gain.setValueAtTime(TRACKS[trk].pump,t);pBus.gain.linearRampToValueAtTime(1,t+S16*2.6);   // the pump
+}
+function mLead(T,t,m,d){
+  if(T.lead==='robot'){mNote(t,m,d,'square',0.045,2400,{glide:0.04,q:6});mNote(t,m+12,d*0.95,'triangle',0.025,0,{glide:0.04});}
+  else if(T.lead==='acid')mNote(t,m,d,'sawtooth',0.07,500,{q:14,env:6,glide:0.02});
+  else{mNote(t,m,d,'triangle',0.06,0,{glide:0.06});mNote(t,m,d,'square',0.018,3000,{det:7});}
 }
 function mPlayStep(s,t){
-  const bar=Math.floor(s/16),st=s%16,sec=Math.floor(bar/4)%4,ch=PROG[bar%4],intro=bar<2;
+  const T=TRACKS[trk],bar=Math.floor(s/16),st=s%16,cyc=bar%16,ch=T.prog[bar%4],intro=bar<4;
+  const sweep=0.5-0.5*Math.cos(2*Math.PI*(cyc*16+st)/256),cut=T.cut[0]+T.cut[1]*sweep;  // filter opens over 8 bars, closes over 8
   if(st%4===0)mKick(t);                                              // four on the floor
-  if(st%4===2)mNoise(t,0.07,0.14,'highpass',7000);                   // offbeat open hat
+  if(st%4===2)mNoise(t,0.08,0.13,'highpass',7000);                   // offbeat open hat
   else if(!intro&&st%2===1)mNoise(t,0.025,0.05,'highpass',9000);     // 16th hats
-  if(!intro&&(st===4||st===12))mNoise(t,0.12,0.3,'bandpass',1500);   // clap
-  if(st%4===2)mNote(t,ch.r,S16*1.7,'sawtooth',0.2,900);              // offbeat house bass
-  if(st===7||st===15)mNote(t,ch.r+12,S16*0.9,'sawtooth',0.12,1200);
-  if(!intro&&(st===3||st===6||st===11||(st===14&&bar%2)))            // chord stabs
-    for(const n of ch.c)mNote(t,n+12,0.13,'square',0.035,2600);
-  if(sec===1||sec===3)mNote(t,ch.c[st%3]+(st>=8?24:12),S16*0.8,'square',0.025,4000); // arpeggio
-  if(sec>=2)for(const [ms,m,l] of MEL[bar%4])if(ms===st){            // lead hook
-    mNote(t,m,S16*l*0.95,'square',0.05,5000);mNote(t,m+12,S16*l*0.9,'triangle',0.03);}
-  if(bar%4===3&&st>=12)mNoise(t,0.06,0.08+0.04*(st-12),'bandpass',2000); // snare fill
+  if(!intro&&(st===4||st===12))mNoise(t,0.13,0.3,'bandpass',1500);   // clap
+  if(T.stabs.includes(st))for(const n of ch.c){                      // filtered disco chords, detuned pair
+    mNote(t,n,0.16,'sawtooth',0.03,cut,{bus:pBus,det:-9,q:4});
+    mNote(t,n,0.16,'square',0.02,cut,{bus:pBus,det:9,q:4});}
+  if(!intro)for(const [bs,iv,l] of T.bass)if(bs===st)                // funky octave bass
+    mNote(t,ch.r+iv,S16*l*0.9,'square',0.16,700+300*sweep);
+  if(T.arp&&cyc>=4&&cyc<8)mNote(t,ch.c[st%4]+12,S16*0.7,'triangle',0.025,0); // sparkly arpeggio
+  if(cyc>=T.leadFrom)for(const [ms,m,l] of T.mel[bar%4])if(ms===st)mLead(T,t,m,S16*l*0.95);
+  if(cyc===7&&st>=8)mNoise(t,0.06,0.06+0.03*(st-8),'bandpass',1800+200*(st-8)); // snare roll
+  if(cyc===15)mNoise(t,S16*1.1,0.02+0.008*st,'highpass',2000+500*st);           // riser into the drop
 }
 function musicSched(){if(!actx)return;while(mNext<actx.currentTime+0.15){mPlayStep(mStep,mNext);mNext+=S16;mStep++;}}
-function musicStart(){if(!actx||muted||!musicOn||mTimer)return;musicInit();mNext=actx.currentTime+0.08;mTimer=setInterval(musicSched,25);}
+function musicStart(){if(!actx||muted||!musicOn||mTimer)return;musicInit();S16=60/TRACKS[trk].bpm/4;mNext=actx.currentTime+0.08;mTimer=setInterval(musicSched,25);}
 function musicStop(){if(mTimer){clearInterval(mTimer);mTimer=null;}}
+function musicNext(){musicStop();if(mStep)trk=(trk+1)%TRACKS.length;mStep=0;musicStart();}
 
 // ================= input =================
 const $=id=>document.getElementById(id);
@@ -576,7 +618,7 @@ function togglePause(){
 }
 function begin(){
   if(state==='over')reset();
-  state='play';document.body.classList.add('play');sfx('start');musicStart();
+  state='play';document.body.classList.add('play');sfx('start');musicNext();
   segShown=Math.floor((bike.x+BBL/2)/BL);banner={text:BIO[0].name,t:0};
 }
 function tapScreen(){
