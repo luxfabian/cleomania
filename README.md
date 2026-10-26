@@ -82,9 +82,10 @@ icon.png                512×512 app icon
 apple-touch-icon.png    180×180 icon for iPhone/iPad
 .nojekyll               tells GitHub Pages to serve the files as they are
 docs/                   screenshots for this README
+fonts/                  Press Start 2P pixel font (woff2) and its licence
 ```
 
-Everything is drawn in code on a low-resolution canvas and scaled up with crisp pixels. There are no image or audio assets. The only external resource is the **Press Start 2P** pixel font from Google Fonts; without internet the game falls back to a monospace font.
+Everything is drawn in code on a low-resolution canvas and scaled up with crisp pixels. There are no image or audio assets. The only other file is the **Press Start 2P** pixel font, which is hosted in `fonts/` (SIL Open Font License, see `fonts/OFL.txt`), so the game loads nothing from other servers.
 
 ### How it works (tech overview)
 
@@ -149,7 +150,6 @@ Roughly in order of impact:
 - **Accessibility:** colour-blind-friendly UI accents, an option for bigger buttons, and a left-handed control swap.
 
 ### Known quirks
-- The pixel font loads from Google Fonts. Offline, a monospace fallback is used.
 - Browsers only allow audio after the first tap, so music starts when you start riding.
 - The trailer is cosmetic (it doesn't pull on the bike), by design.
 

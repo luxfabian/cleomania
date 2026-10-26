@@ -12,10 +12,9 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" type="image/png" href="icon.png">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+<link rel="preload" href="fonts/PressStart2P.woff2" as="font" type="font/woff2" crossorigin>
 <style>
+@font-face{font-family:'Press Start 2P';src:url(fonts/PressStart2P.woff2) format('woff2');font-display:block}
 :root{--pad:min(23vmin,118px);--gap:12px}
 *{box-sizing:border-box}
 html,body{margin:0;height:100%;overflow:hidden;background:#14141f;touch-action:none;
