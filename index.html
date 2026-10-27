@@ -27,18 +27,16 @@ canvas{position:fixed;left:0;top:0;display:block;image-rendering:pixelated;image
   box-shadow:0 4px 0 rgba(0,0,0,.35);touch-action:none;
   bottom:calc(var(--gap) + env(safe-area-inset-bottom))}
 .pad.on{background:rgba(255,255,255,.38);transform:translateY(3px);box-shadow:0 1px 0 rgba(0,0,0,.35)}
-#bFlip{left:calc(var(--gap) + env(safe-area-inset-left))}
+#bBrake{left:calc(var(--gap) + env(safe-area-inset-left))}
 #bGas{right:calc(var(--gap) + env(safe-area-inset-right))}
 #bBoost{right:calc(var(--gap) + env(safe-area-inset-right));height:calc(var(--pad)*.55);
   bottom:calc(var(--gap)*2 + var(--pad) + env(safe-area-inset-bottom));opacity:.55}
 #bBoost.ready{opacity:1;background:#ffb703;color:#1b1b1b;text-shadow:none;animation:pulse .5s steps(2) infinite}
 #bBoost.active{opacity:1;background:#ff4fa3;animation:none}
 @keyframes pulse{50%{background:#fff3b0}}
-.arr{width:0;height:0;border-top:13px solid transparent;border-bottom:13px solid transparent}
-.arr.r{border-left:20px solid #fff}
 .ccw{font:bold 34px/1 system-ui,sans-serif;color:#fff}
 body.play .pad{display:flex}
-#top{position:fixed;top:calc(5px + env(safe-area-inset-top));left:50%;transform:translateX(-50%);display:flex;gap:8px}
+#top{position:fixed;bottom:calc(var(--cpx,2px)*15);left:50%;transform:translateX(-50%);display:flex;gap:8px} /* just above the CLEOMANIA label */
 .sm{width:34px;height:30px;border:2px solid rgba(255,255,255,.8);background:rgba(20,20,35,.35);color:#fff;
   font:9px 'Press Start 2P',monospace;padding:0;touch-action:none}
 #bPause{display:none}
@@ -49,9 +47,9 @@ body.play #bPause{display:block}
 <body>
 <canvas id="c"></canvas>
 <div id="top"><button id="bMute" class="sm">SND</button><button id="bMus" class="sm">MUS</button><button id="bPause" class="sm">II</button></div>
-<div id="bFlip" class="pad"><b class="ccw">&#8634;</b><span>FLIP</span></div>
+<div id="bBrake" class="pad"><b class="ccw">&#8634;</b><span>BRAKE</span></div>
 <div id="bBoost" class="pad"><span id="boostLbl">BOOST</span></div>
-<div id="bGas" class="pad"><b class="arr r"></b><span>PEDAL</span></div>
+<div id="bGas" class="pad"><b class="ccw">&#8635;</b><span>PEDAL</span></div>
 <script>
 (()=>{
 'use strict';
@@ -66,6 +64,7 @@ function resize(){
   W=Math.ceil(pw/s);H=Math.ceil(ph/s);
   cv.width=W;cv.height=H;
   cv.style.width=(W*s/dpr)+'px';cv.style.height=(H*s/dpr)+'px';
+  document.documentElement.style.setProperty('--cpx',(s/dpr)+'px'); // size of one canvas pixel, for the menu position
   Hc=Math.round(H*0.64);
   if(buf.length<W)buf=new Float32Array(W+64);
   ctx.imageSmoothingEnabled=false;
@@ -84,28 +83,74 @@ const mix=(a,b,t)=>[lerp(a[0],b[0],t),lerp(a[1],b[1],t),lerp(a[2],b[2],t)];
 const rgb=a=>`rgb(${a[0]|0},${a[1]|0},${a[2]|0})`;
 
 // ================= biomes =================
-const ALPS=0,FOREST=1,DESERT=2,COAST=3,NB=4;
+const ALPS=0,FOREST=1,DESERT=2,COAST=3,NB=4,AACHEN=4; // NB: biomes in the endless loop; Aachen only starts the ride
 const BIO=[
  {name:'THE ALPS',  skyT:[78,150,222], skyB:[206,236,255],top:[86,168,78], edge:[150,214,120],soil:[121,85,50], dark:[88,60,34]},
  {name:'THE FOREST',skyT:[92,162,196], skyB:[214,236,212],top:[62,128,56], edge:[112,172,82], soil:[92,64,40],  dark:[64,42,24]},
  {name:'THE DESERT',skyT:[236,140,84], skyB:[255,228,168],top:[234,186,98],edge:[255,226,150],soil:[212,148,78],dark:[176,112,56]},
  {name:'THE COAST', skyT:[56,160,220], skyB:[192,240,255],top:[238,214,160],edge:[255,246,210],soil:[204,168,108],dark:[164,128,76]},
+ {name:'AACHEN',    skyT:[92,146,206], skyB:[212,228,240],top:[150,146,140],edge:[192,188,180],soil:[112,96,82], dark:[80,68,58]},
 ];
-BIO.forEach(b=>{b.topS=rgb(b.top);b.edgeS=rgb(b.edge);b.soilS=rgb(b.soil);b.darkS=rgb(b.dark);});
 // transition zones: Alps->Forest foothills, Forest->Desert savanna, Desert->Coast beach dunes, Coast->Alps lakeside meadow
 const TRP=[
  {top:[96,150,70],  edge:[150,200,110],soil:[110,78,48], dark:[80,56,32], skyT:[84,156,214], skyB:[214,238,240]},
  {top:[170,162,82], edge:[212,200,118],soil:[168,120,70],dark:[130,90,50], skyT:[196,150,120],skyB:[255,224,176]},
  {top:[228,206,150],edge:[250,236,196],soil:[200,168,110],dark:[160,128,80],skyT:[110,168,214],skyB:[255,228,190]},
  {top:[110,170,90], edge:[170,215,130],soil:[130,100,70],dark:[96,72,48], skyT:[70,152,222], skyB:[204,236,255]},
+ {top:[92,152,74],  edge:[146,202,112],soil:[114,82,52], dark:[84,58,36], skyT:[84,150,214], skyB:[212,234,246]}, // Aachen->Forest: Eifel hills
 ];
 function gpal(a,b,t,k){const A=BIO[a][k],B=BIO[b][k],T=TRP[a][k];return t<0.5?mix(A,T,t*2):mix(T,B,(t-0.5)*2);}
 const rgbCache=new Map();
 function rgbc(a){const key=((a[0]|0)<<16)|((a[1]|0)<<8)|(a[2]|0);let v=rgbCache.get(key);
   if(!v){if(rgbCache.size>5000)rgbCache.clear();v=rgb(a);rgbCache.set(key,v);}return v;}
-const BL=7800,BBL=1900;
+const BL=7800,BBL=1900,AL=6000; // biome length, transition length, length of the Aachen start
 let bA=0,bB=1,bT=0;
-function biome(x){const seg=Math.floor(x/BL),loc=x-seg*BL;bA=((seg%NB)+NB)%NB;bB=(bA+1)%NB;bT=sstep(BL-BBL,BL,loc);}
+const LOOP0=FOREST; // every ride starts in Aachen, then loops Forest -> Desert -> Coast -> Alps -> Forest ...
+function biome(x){
+  if(x<AL){bA=AACHEN;bB=LOOP0;bT=sstep(AL-BBL,AL,x);return;}
+  x-=AL;const seg=Math.floor(x/BL),loc=x-seg*BL;bA=(((seg+LOOP0)%NB)+NB)%NB;bB=(bA+1)%NB;bT=sstep(BL-BBL,BL,loc);
+}
+const loopAt=b=>AL+((b-LOOP0+NB)%NB)*BL;                       // world x where biome b first begins
+const segOf=x=>x<AL?-1:Math.floor((x-AL)/BL);                 // -1 = Aachen, then 0,1,2... along the loop
+const segName=sg=>BIO[sg<0?AACHEN:(sg+LOOP0)%NB].name;
+
+// ================= climate =================
+// One continuous world described by values that drift along the track (all 0..1):
+// elev = mountainous, moist = dry..lush, temp = cold..hot, sea = at the sea, urban = city, arid = desert-ness (derived).
+// Ground colours and scenery are functions of these values, so regions blend without seams.
+// Biome IDs still drive the terrain heights, background shapes and the banner text.
+//            elev moist temp  sea urban
+const CLIM =[[.90,.60,.08,0,0],[.40,.82,.42,0,0],[.35,.07,.92,0,0],[.05,.45,.70,1,0],[.25,.70,.40,0,1]];      // biome cores
+const CLIMT=[[.55,.72,.30,0,0],[.30,.32,.70,0,0],[.12,.22,.80,.7,0],[.45,.65,.28,.2,0],[.38,.80,.36,0,.12]]; // foothills, savanna, dunes, lakeside, Eifel
+let pE=0,pM=0,pT=0,pS=0,pU=0,pA=0;
+// quadratic curve from a to b that passes through m halfway: smooth, no kink at the midpoint
+const bez=(a,m,b,t)=>{const c=2*m-(a+b)/2,u=1-t;return u*u*a+2*u*t*c+t*t*b;};
+const bump=(v,lo,hi,s=0.1)=>sstep(lo-s,lo,v)*(1-sstep(hi,hi+s,v));
+function climate(x){ // sets pE,pM,pT,pS,pU,pA (and bA,bB,bT)
+  biome(x);const A=CLIM[bA],B=CLIM[bB],M=CLIMT[bA],t=bT;
+  pE=clamp(bez(A[0],M[0],B[0],t)+0.06*noise(x/1400,SEED+701)+0.03*noise(x/280,SEED+702),0,1);
+  pM=clamp(bez(A[1],M[1],B[1],t)+0.05*noise(x/1300,SEED+703)+0.035*noise(x/260,SEED+704),0,1);
+  pT=clamp(bez(A[2],M[2],B[2],t)+0.05*noise(x/1600,SEED+705),0,1);
+  pS=clamp(bez(A[3],M[3],B[3],t),0,1);
+  pU=clamp(bez(A[4],M[4],B[4],t),0,1);
+  pA=sstep(0.25,0.05,pM)*sstep(0.6,0.88,pT)*(1-pS);
+}
+// ground colours: the tuned biome and transition palettes sit at their climate in (elev, moist, temp, sea)
+// space and are blended by closeness, so each core keeps its look and the colours follow the local climate in between
+const GANCH=[...CLIM.map((c,i)=>[c,BIO[i]]),...CLIMT.map((c,i)=>[c,TRP[i]])];
+const gTop=[0,0,0],gEdge=[0,0,0],gSoil=[0,0,0],gDark=[0,0,0];
+function groundPal(){ // from the current pE,pM,pT,pS,pU
+  let ws=0;gTop.fill(0);gEdge.fill(0);gSoil.fill(0);gDark.fill(0);
+  for(const [c,P] of GANCH){
+    const d2=0.5*(pE-c[0])**2+(pM-c[1])**2+(pT-c[2])**2+1.5*(pS-c[3])**2+2*(pU-c[4])**2,w=1/(d2*d2*d2+1e-9);ws+=w;
+    for(let k=0;k<3;k++){gTop[k]+=P.top[k]*w;gEdge[k]+=P.edge[k]*w;gSoil[k]+=P.soil[k]*w;gDark[k]+=P.dark[k]*w;}
+  }
+  for(let k=0;k<3;k++){gTop[k]/=ws;gEdge[k]/=ws;gSoil[k]/=ws;gDark[k]/=ws;}
+}
+function regionName(){ // debug label for the current climate
+  if(pU>0.5)return 'AACHEN';if(pU>0.05)return 'EIFEL';if(pS>0.6)return 'COAST';if(pA>0.55)return 'CANYON';if(pE>0.7&&pT<0.3)return 'ALPS';
+  if(pM>0.55)return pE<0.62?'FOREST':'FOOTHILLS';if(pT>0.5)return pS<0.3?'SAVANNA':'DUNES';return 'MEADOW';
+}
 
 // ================= terrain =================
 let SEED=1;
@@ -121,9 +166,10 @@ function hb(b,x){
   if(b===ALPS)return 50*noise(x/270,s+11)+14*noise(x/90,s+12)+90*noise(x/1150,s+13)+2*noise(x/25,s+14);
   if(b===FOREST)return 30*noise(x/200,s+41)+12*noise(x/70,s+42)+55*noise(x/900,s+43)+2.5*noise(x/16,s+44);
   if(b===DESERT)return 32*noise(x/210,s+21)+11*noise(x/66,s+22)+45*noise(x/950,s+23);
+  if(b===AACHEN)return 22*noise(x/260,s+51)+8*noise(x/80,s+52)+30*noise(x/1000,s+53); // gentle city hills
   return 19*noise(x/240,s+31)+6*noise(x/75,s+32)+28*noise(x/1000,s+33);
 }
-function rampsOf(b,x){return b===ALPS?rampF(x,SEED+15,0.3):b===FOREST?rampF(x,SEED+45,0.45):b===DESERT?rampF(x,SEED+25,0.35):rampF(x,SEED+35,0.6);}
+function rampsOf(b,x){return b===ALPS?rampF(x,SEED+15,0.3):b===FOREST?rampF(x,SEED+45,0.45):b===DESERT?rampF(x,SEED+25,0.35):b===AACHEN?rampF(x,SEED+55,0.45):rampF(x,SEED+35,0.6);}
 function terrainH(x){
   const m=sstep(150,900,x)*(0.85+Math.min(x/40000,0.35));
   if(m===0)return 0;
@@ -170,13 +216,6 @@ const SPR={
  tower:spr(["eeeeeeeee",".eeeeeee.",".bwwwwwb.",".b.....b.",".bbbbbbb.",".b.....b.","..b...b..","..b...b..","..bb.bb..","..b.b.b..","..b...b..",".b.....b.",".b.....b."]),
  sail:spr(["..w...","..ww..","..www.","..wwww","bbbbbb",".bbbb."]),
 };
-const DECOR=[
- [[SPR.pine,.4],[SPR.pineS,.15],[SPR.rock,.1],[SPR.cow,.08],[SPR.flowers,.09],[SPR.chalet,.08],[SPR.fence,.1]],
- [[SPR.fir,.35],[SPR.oak,.2],[SPR.stump,.1],[SPR.mush,.12],[SPR.fern,.13],[SPR.deer,.06],[SPR.rock,.04]],
- [[SPR.cactus,.45],[SPR.barrel,.15],[SPR.rock2,.15],[SPR.skull,.08],[SPR.tumble,.1],[SPR.camel,.07]],
- [[SPR.palm,.35],[SPR.umbrella,.15],[SPR.surf,.1],[SPR.crab,.15],[SPR.hut,.15],[SPR.tower,.1]],
-];
-const DENS=[.6,.8,.34,.45];
 Object.assign(SPR,{
  acacia:spr(["..ggggggggggg..",".gGgggggGgggGg.","ggggggggggggggg","....t....t.....",".....t..t......","......tt.......","......tt.......","......tt.......","......tt.......",".....tttt......"]),
  drybush:spr([".h.b.h.","hbhbhbh",".bhbhb.","..bbb.."]),
@@ -186,13 +225,6 @@ Object.assign(SPR,{
  birch:spr(["..GGG..",".GgGgG.","GGgGGgG","gGGgGGg",".GgGgG.","..GgG..","...w...","...k...","...w...","...w...","...k...","...w...","...w...","...k...","...w..."]),
  log:spr(["ttttttth","tTttTtth","ttttttth"]),
 });
-const TDECOR=[
- [[SPR.pine,.25],[SPR.fir,.2],[SPR.birch,.15],[SPR.rock,.15],[SPR.log,.1],[SPR.flowers,.15]],
- [[SPR.acacia,.3],[SPR.drybush,.3],[SPR.mound,.15],[SPR.rock2,.1],[SPR.bgrass,.15]],
- [[SPR.bgrass,.35],[SPR.drift,.2],[SPR.barrel,.1],[SPR.crab,.1],[SPR.palm,.15],[SPR.rock2,.1]],
- [[SPR.birch,.25],[SPR.flowers,.25],[SPR.rock,.2],[SPR.fence,.15],[SPR.cow,.15]],
-];
-const TDENS=[.65,.45,.5,.55];
 Object.assign(SPR,{
  cabin:spr(["....TTTT....","...TttttT...","..TttttttT..",".TttttttttT.","TTTTTTTTTTTT",".btbtbtbtbt.",".bw.bbbb.wb.",".bbbbkkbbbb.",".tbtbkkbtbt."]),
  ship:spr([".......w........","......ww.ww.....",".....www.www....","....wwww.wwww...","........k.......","eeeeeeeeeeeeeeee",".kkkkkkkkkkkkkk."]),
@@ -200,44 +232,96 @@ Object.assign(SPR,{
  balloon2:spr(["..BwB..",".BwBwB.","BwBwBwB","BwBwBwB",".BwBwB.","..BwB..","...k...","..k.k..","..bbb..","..bbb.."]),
  glider:spr([".eeyyyee.","e.......e",".k.....k.","..k...k..","...kbk...","....b...."]),
 });
-DECOR[FOREST].push([SPR.cabin,.05]);
-// placement categories
-const KIND=new Map();
-[SPR.chalet,SPR.hut,SPR.tower,SPR.fence,SPR.umbrella,SPR.arch,SPR.cabin].forEach(s=>KIND.set(s,'build'));
-[SPR.cow,SPR.deer,SPR.camel].forEach(s=>KIND.set(s,'animal'));
-[SPR.pine,SPR.pineS,SPR.fir,SPR.oak,SPR.palm,SPR.acacia,SPR.birch,SPR.cactus,SPR.hoodoo].forEach(s=>KIND.set(s,'tree'));
 const flipCache=new Map();
 function flipped(sp){let f=flipCache.get(sp);if(!f){f=document.createElement('canvas');f.width=sp.width;f.height=sp.height;const x=f.getContext('2d');x.translate(sp.width,0);x.scale(-1,1);x.drawImage(sp,0,0);flipCache.set(sp,f);}return f;}
 const DSCALE=1.75;
 PAL.a='#c4623a';PAL.A='#8f4228';
 SPR.arch=spr(["....aaaaaaaaaa....","..aaaAaaaaaaAaaa..",".aaAaa......aaAaa.",".aAa..........aAa.","aaA............Aaa","aAa............aAa","aaa............aaa","aAa............aAa","aaA............Aaa","AAa............aAA","AAAa..........aAAA"]);
 SPR.hoodoo=spr([".AAA.","AaaaA",".aaa.","..a..",".aaa.",".aAa.","aaaaa",".aAa.","aaaaa","aaAaa","aaaaa","AAAAA"]);
-DECOR[DESERT]=[[SPR.cactus,.38],[SPR.barrel,.12],[SPR.rock2,.12],[SPR.skull,.06],[SPR.tumble,.08],[SPR.camel,.06],[SPR.arch,.08],[SPR.hoodoo,.1]];
+// Aachen: town houses, street furniture, the Elisenbrunnen
+Object.assign(PAL,{i:'#a9bcd0',I:'#8496ad',u:'#c7d6a8',U:'#a2b386',Q:'#4b5266',q:'#6f93b8',m:'#e8d8b8',M:'#c9b48e',x:'#e0b060',X:'#b88a3a',z:'#d98c7a',Z:'#b06a5c',v:'#f1ebdf',V:'#cfc5b2',j:'#4a4540'});
+Object.assign(SPR,{
+ house1:spr(["....QQ....","...QQQQ...","..QQQQQQ..",".QQQQQQQQ.","QQQQQQQQQQ",".mmmmmmmm.",".mqqmmqqm.",".mqqmmqqm.",".MMMMMMMM.",".mqqmmqqm.",".mqqmmqqm.",".MMMMMMMM.",".mqqmmnnm.",".mqqmmnnm.",".MMMMMnnM."]),
+ house2:spr([".....xx.....",".....xx.....","...xxxxxx...","...xxqqxx...",".xxxxxxxxxx.",".xxxxxxxxxx.","xxxxxxxxxxxx","xqqxxqqxxqqx","xqqxxqqxxqqx","XXXXXXXXXXXX","xqqxxqqxxqqx","xqqxxqqxxqqx","XXXXXXXXXXXX","xqqxxnnxxqqx","xqqxxnnxxqqx","XXXXXnnXXXXX"]),
+ house3:spr(["..QQQQQQQ..",".QQqQQQqQQ.","QQQqQQQqQQQ","vvvvvvvvvvv","zqqzzqzzqqz","zqqzzqzzqqz","ZZZZZZZZZZZ","zqqzzqzzqqz","zqqzzqzzqqz","ZZZZZZZZZZZ","zqqzznzzqqz","zqqzznzzqqz","ZZZZZnZZZZZ"]),
+ house4:spr(["....Q....","...QQQ...","..QQQQQ..",".QQQQQQQ.","QQQQQQQQQ","iiiiiiiii","iqqiiiqqi","iqqiiiqqi","IIIIIIIII","iqqiiiqqi","iqqiiiqqi","IIIIIIIII","iqqiiiqqi","iqqiiiqqi","IIIIIIIII","iqqinniii","iqqinniii","IIIInnIII"]),
+ house5:spr(["..Q......Q..",".QQQQQQQQQQ.","QQqQQQQQQqQQ","vvvvvvvvvvvv","uqquuqquuqqu","uqquuqquuqqu","UUUUUUUUUUUU","uqquuqquuqqu","uqquuqquuqqu","UUUUUUUUUUUU","uqquunnuuqqu","uqquunnuuqqu","UUUUUnnUUUUU"]),
+ lamp:spr(["kyk",".k.",".k.",".k.",".k.",".k.",".k.",".k.",".k.",".k.",".k.","kkk"]),
+ bench:spr(["bbbbbbb","b.....b","bbbbbbb","k.....k"]),
+ stall:spr(["ewewewewewe","ewewewewewe",".k.......k.",".k.......k.",".k.hHhHh.k.",".bbbbbbbbb.",".bnnnnnnnb.",".bnnnnnnnb.",".b.......b."]), // Printen stand
+ elisen:spr(["...........vvvv...........",".........vvVVVVvv.........","........vVVVVVVVVv........",".......vvvvvvvvvvvv.......",
+   "vvvvvvvvvvvvvvvvvvvvvvvvvv","VVVVVVVVVVVVVVVVVVVVVVVVVV",...Array(4).fill('v'+'jv'.repeat(12)+'v'),"vvvvvvvvvvvvvvvvvvvvvvvvvv","VVVVVVVVVVVVVVVVVVVVVVVVVV"]),
+});
+// Aachen skyline landmarks, painted with rectangles; .tops = first opaque row per column (for the haze)
+function paint(w,h,f){
+  const c=document.createElement('canvas');c.width=w;c.height=h;const x=c.getContext('2d');
+  f((px,py,pw,ph,col)=>{x.fillStyle=col;x.fillRect(px,py,pw,ph);});
+  const d=x.getImageData(0,0,w,h).data;c.tops=new Int16Array(w).fill(h);
+  for(let i=0;i<w;i++)for(let j=0;j<h;j++)if(d[(j*w+i)*4+3]){c.tops[i]=j;break;}
+  return c;
+}
+const STONE='#9b9483',STONED='#7d7768',SLATE='#4e5668',GOLD='#d6b04c',GLASS='#6d86a8';
+SPR.dom=paint(40,46,r=>{ // Aachen Cathedral: west tower, Carolingian octagon with dome, Gothic glass choir
+  r(3,18,6,28,STONED);r(3,14,6,4,SLATE);r(4,9,4,5,SLATE);r(5,4,2,5,SLATE);r(5,1,1,3,GOLD);
+  r(4,22,1,4,'#3a3f4c');r(7,22,1,4,'#3a3f4c');r(5,32,2,5,'#3a3f4c');
+  r(9,24,14,22,STONE);r(11,20,10,4,STONED);r(11,15,10,5,SLATE);r(13,12,6,3,SLATE);r(15,10,2,2,SLATE);r(15,7,2,3,STONE);r(16,5,1,2,GOLD);
+  for(const wx of [11,15,19])r(wx,28,2,5,GLASS);
+  r(23,18,17,28,'#a7a090');r(23,14,17,4,SLATE);r(25,12,13,2,SLATE);r(31,9,1,3,SLATE);
+  for(let k=0;k<4;k++)r(25+k*4,21,2,20,GLASS);
+  for(let k=0;k<5;k++)r(23+k*4,20,1,26,STONED);
+  r(0,44,40,2,STONED);
+});
+SPR.rathaus=paint(36,34,r=>{ // town hall with its two towers
+  r(5,14,26,20,'#a3927a');r(5,10,26,4,SLATE);r(7,8,22,2,SLATE);
+  for(let k=0;k<6;k++){r(7+k*4,17,2,5,GLASS);r(7+k*4,26,2,5,GLASS);}
+  r(0,10,6,24,'#8f8574');r(0,7,6,3,SLATE);r(1,4,4,3,SLATE);r(2,1,2,3,SLATE);r(2,0,1,1,GOLD);
+  r(30,7,6,27,'#8f8574');r(30,4,6,3,SLATE);r(31,1,4,3,SLATE);r(32,0,2,1,GOLD);
+  r(2,14,2,3,GLASS);r(32,12,2,3,GLASS);
+});
+SPR.superc=paint(28,30,r=>{ // RWTH SuperC: glass block whose upper floors cantilever out
+  r(2,10,10,20,'#8ea3b8');r(2,2,25,10,'#8ea3b8');
+  for(let y=4;y<30;y+=3)r(2,y,y<12?25:10,1,'#66788c');
+  r(12,12,15,1,'#4a5768');r(0,29,28,1,'#66788c');
+});
+// placement categories
+const KIND=new Map();
+[SPR.chalet,SPR.hut,SPR.tower,SPR.fence,SPR.umbrella,SPR.arch,SPR.cabin,SPR.stall].forEach(s=>KIND.set(s,'build'));
+[SPR.cow,SPR.deer,SPR.camel].forEach(s=>KIND.set(s,'animal'));
+[SPR.pine,SPR.pineS,SPR.fir,SPR.oak,SPR.palm,SPR.acacia,SPR.birch,SPR.cactus,SPR.hoodoo].forEach(s=>KIND.set(s,'tree'));
 
 // ================= constants & state =================
 const G=280,I=230,K=3200,CD=60,MU=1.6,FMAX=680,POWER=36000,DRAG=0.0018,ROLL=10,
-      FLIP_W=7,FLIP_WG=2.5,PMAX=2.5,BOOST_F=430,BOOST_T=5,ARM=18,TR_R=6,PXM=12,DT=1/240;
+      FLIP_W=7,AIR_H=12,BRAKE=300,SLAM_H=45,SLAM_V=320,SLAM_CD=3,PMAX=2.5,BOOST_F=430,BOOST_T=5,ARM=18,TR_R=6,PXM=12,DT=1/240;
 const HEAD=[[10.5,18],[13.6,15.2],[11.5,12.6]]; // only the head counts as a crash
 let state='title',time=0,acc=0,relT=0,combo=0,speedFx=0,momT=0,momF=0;
 let bike,wheels,tr,cam={x:0,y:0},lead=0,camOff=0.3,camXi=0,camYi=0;
-const input={gas:false,flip:false};
-let boost=0,boostOn=0,airT=0,airRot=0,wheelieT=0,trick=0,flips=0,maxX=60,crashT=0,overT=0,
+const input={gas:false,brake:false};
+let slam=false,slamCD=0,airOK=false,boost=0,boostOn=0,airT=0,airRot=0,wheelieT=0,trick=0,flips=0,maxX=60,crashT=0,overT=0,
     shake=0,crank=0,lastMile=0,flash=0,segShown=-99,newBest=false;
 let popups=[],parts=[],banner=null,pusher;
 let hi=0;try{hi=+localStorage.getItem('cleomania_hi')||0;}catch(e){}
+// developer switches in the URL: ?debug (overlay, [ ] to jump), &x=15000 (start there), &seed=7, &still (no physics)
+const DBG=(()=>{const q=new URLSearchParams(location.search);
+  return {on:q.has('debug'),overlay:q.has('debug'),still:q.has('still'),x:+q.get('x')||0,seed:q.has('seed')?(+q.get('seed')|0):null,ms:0};})();
 
 function reset(){
-  SEED=(Math.random()*1e6)|0;
-  bike={x:60,y:12.5,vx:0,vy:0,a:0,w:0};
-  wheels=[{ox:-11,oy:-7,r:5.5,c:true,vt:0,om:0,spin:0},{ox:11,oy:-7,r:5.5,c:true,vt:0,om:0,spin:0}];
-  tr={x:49-ARM,y:6,px:49-ARM,py:6,g:true,spin:0};
-  cam.x=bike.x-W*0.3;cam.y=bike.y;lead=0;
-  boost=0;boostOn=0;airT=0;airRot=0;wheelieT=0;trick=0;flips=0;maxX=60;crashT=0;overT=0;
-  shake=0;crank=0;lastMile=0;combo=0;speedFx=0;momT=0;momF=0;flash=0;segShown=-99;newBest=false;
-  popups=[];parts=[];banner=null;
+  SEED=DBG.seed!==null?DBG.seed:(Math.random()*1e6)|0;
+  boost=0;boostOn=0;trick=0;flips=0;crashT=0;overT=0;
+  combo=0;flash=0;segShown=-99;newBest=false;
+  popups=[];banner=null;
   pusher={on:false,a:0,phase:0,leave:null,hand:{x:0,y:0},gT:0};
-  input.gas=input.flip=false;
+  input.gas=input.brake=false;
+  maxX=60;place(60);
   updButtons();
+}
+function place(x){ // put the bike (standing still) at world x
+  const gy=Math.max(terrainH(x-11),terrainH(x+11)),tx=x-11-ARM;
+  bike={x,y:gy+12.5,vx:0,vy:0,a:0,w:0};
+  wheels=[{ox:-11,oy:-7,r:5.5,c:true,vt:0,om:0,spin:0},{ox:11,oy:-7,r:5.5,c:true,vt:0,om:0,spin:0}];
+  tr={x:tx,y:terrainH(tx)+TR_R,px:tx,py:terrainH(tx)+TR_R,g:true,spin:0};
+  cam.x=bike.x-W*0.3;cam.y=bike.y;lead=0;
+  airT=0;airRot=0;wheelieT=0;relT=0;slam=false;slamCD=0;airOK=false;momT=0;momF=0;speedFx=0;shake=0;crank=0;parts=[];
+  maxX=Math.max(maxX,x);lastMile=Math.floor((maxX-60)/PXM/100);
 }
 
 // ================= physics =================
@@ -245,15 +329,16 @@ function rearAxle(){const ca=Math.cos(bike.a),sa=Math.sin(bike.a);return [bike.x
 
 function phys(dt){
   const b=bike,live=state==='play';
-  const gas=live&&input.gas,flp=live&&input.flip;
+  const gas=live&&input.gas,brk=live&&input.brake;
   let ca=Math.cos(b.a),sa=Math.sin(b.a);
-  let fx=0,fy=-G,tq=0,any=false,gtx=1,gty=0;
+  let fx=0,fy=-G,tq=0,any=false,gtx=1,gty=0,clr=1e9; // clr: lowest wheel's height above the ground
+  slamCD=Math.max(0,slamCD-dt);
   for(let i=0;i<2;i++){
     const wh=wheels[i];
     const rx=wh.ox*ca-wh.oy*sa,ry=wh.ox*sa+wh.oy*ca,cx=b.x+rx,cy=b.y+ry;
     const gy=terrainH(cx),sl=slope(cx),nl=Math.hypot(1,sl),nx=-sl/nl,ny=1/nl;
     const pen=wh.r-(cy-gy)*ny;
-    wh.c=pen>-0.4;
+    wh.c=pen>-0.4;clr=Math.min(clr,-pen);
     if(pen>0){
       any=true;
       const qx=rx-nx*wh.r,qy=ry-ny*wh.r;
@@ -265,10 +350,11 @@ function phys(dt){
       if(i===0&&tx<0.93&&ty>0&&vt<70)lim*=1+2*clamp((70-vt)/70,0,1); // grip assist on steep climbs
       const Fr=-Math.sign(vt)*Math.min(Math.abs(vt)*3,ROLL);
       const Fd=(i===0&&gas)?Math.min(FMAX,POWER/Math.max(25,vt),lim):0;
-      const Ft=Fr+Fd;
+      const Fb=brk?-Math.sign(vt)*Math.min(Math.abs(vt)*12,BRAKE,MU*Fn):0; // brakes slow down, never push back
+      const Ft=Fr+Fd+Fb;
       fx+=Fn*nx+Ft*tx;fy+=Fn*ny+Ft*ty;
       tq+=qx*Fn*ny-qy*Fn*nx;
-      tq+=rx*Fr*ty-ry*Fr*tx; // pedalling pushes only, it never tilts the bike
+      tq+=rx*Fr*ty-ry*Fr*tx; // pedalling and braking push only, they never tilt the bike
       wh.vt=vt;wh.om=vt/wh.r;
       if(i===0){gtx=tx;gty=ty;}
     }
@@ -283,9 +369,21 @@ function phys(dt){
   if(momT>0&&any&&b.vx<460){fx+=momF*gtx;fy+=momF*gty;} // landing momentum
   let al=tq/I;
   if(any)relT=0;
-  if(!any){
-    // in the air: FLIP turns the bike at a steady rate, releasing stops the rotation at once
-    if(flp){b.w=FLIP_W;al=0;relT=0;}
+  // pedal and brake only start flipping once the wheels have cleared the ground by AIR_H, so bumps never flip the bike;
+  // once cleared, flipping stays possible until the landing
+  airOK=!any&&(airOK||clr>AIR_H);
+  if(!any&&!airOK&&gas!==brk){} // too close to the ground: a single button doesn't turn the bike
+  else if(!any){
+    // in the air: PEDAL turns the bike clockwise (frontflip), BRAKE counter-clockwise (backflip), at a steady rate;
+    // releasing stops the rotation at once. Both near the ground: slam down, nose along the slope.
+    if(!(gas&&brk))slam=false;
+    if(gas&&brk&&clr<SLAM_H&&(slam||slamCD<=0)){ // after a slam, the next one is blocked for SLAM_CD seconds
+      if(!slam)slamCD=SLAM_CD;
+      slam=true;b.vy=Math.min(b.vy,-SLAM_V);al=0;relT=0;
+      let d=b.a-Math.atan(slope(b.x+Math.max(0,b.vx)*0.05));d=((d+Math.PI)%TAU+TAU)%TAU-Math.PI;
+      b.w=clamp(-d*14,-FLIP_W,FLIP_W);
+    }
+    else if(gas!==brk){b.w=gas?-FLIP_W:FLIP_W;al=0;relT=0;}
     else if(boostOn>0){ // still held by the pusher: stays level
       let d=b.a-Math.atan2(clamp(b.vy,-0.6*b.vx,0.6*b.vx),Math.max(1,b.vx));d=((d+Math.PI)%TAU+TAU)%TAU-Math.PI;
       al+=-d*16-b.w*5;
@@ -299,8 +397,7 @@ function phys(dt){
     }
   }
   else{
-    if(flp)al+=(FLIP_WG-b.w)*25;   // on the ground: lift the front at a steady rate
-    else if(boostOn>0){ // the pusher keeps the bike steady
+    if(boostOn>0){ // the pusher keeps the bike steady
       let d=b.a-Math.atan2(gty,gtx);d=((d+Math.PI)%TAU+TAU)%TAU-Math.PI;
       al+=-d*28-b.w*5;
     }
@@ -372,8 +469,8 @@ function tricks(dt){
     if(airT>0.4){charge(0.08*dt);trick+=22*dt;}
     if(wheelieT>0)endWheelie();
   }else{
-    if(airT>0.35)land();
-    airT=0;airRot=0;
+    if(airT>0.35||(slam&&airT>0.2))land(); // a slam from a tiny hop earns nothing
+    airT=0;airRot=0;slam=false;
     if(rc&&!fc&&bike.vx>25){wheelieT+=dt;if(wheelieT>0.5){charge(0.06*dt);trick+=18*dt;}}
     else if(wheelieT>0)endWheelie();
   }
@@ -387,7 +484,7 @@ function land(){
   let big=false;
   if(n>0){
     const p=150*n;trick+=p;flips+=n;charge(0.34*n);big=true;
-    pop((n>1?n+'X ':'')+'BACKFLIP +'+p,'#ffd23f');sfx('flip');
+    pop((n>1?n+'X ':'')+(airRot>0?'BACKFLIP':'FRONTFLIP')+' +'+p,'#ffd23f');sfx('flip');
   }
   if(airT>1){const p=Math.round(airT*35);trick+=p;charge(0.05);pop('BIG AIR '+airT.toFixed(1)+'S +'+p,'#8fe3ff');}
   // --- landing quality decides your speed (Hill Climb style) ---
@@ -409,13 +506,17 @@ function land(){
   }else{              // sloppy: lose a lot
     combo=0;mult=0.45;shake=0.15;pop('SLOPPY LANDING -SPEED','#ff7a5a');
   }
+  if(slam){ // slammed into the ground: a short extra push
+    slam=false;add+=90;momT=Math.max(momT,1.2);momF=Math.max(momF,220);trick+=30;shake=Math.max(shake,0.12);
+    pop('SLAM! +SPEED','#7df9ff');sfx('slam');
+  }
   if(vt>0||add>0){
     const target=Math.min(Math.max(vt,0)*mult+add,480);
     const dv=target-vt;
     bike.vx+=dv*tx;bike.vy+=dv*ty;
   }
-  const h=rearAxle();biome(h[0]);
-  dust(h[0],h[1]-5,BIO[bA].edge,8+(add>0?8:0),60);
+  const h=rearAxle();climate(h[0]);groundPal();
+  dust(h[0],h[1]-5,gEdge,8+(add>0?8:0),60);
 }
 function charge(v){
   if(boostOn>0||boost>=1)return;
@@ -435,10 +536,10 @@ function endBoost(){
 }
 function crash(){
   state='crash';crashT=0;shake=0.45;sfx('crash');pop('CRASH!','#ff5555');
-  input.gas=input.flip=false;
+  input.gas=input.brake=false;
   if(boostOn>0)endBoost();
   document.body.classList.remove('play');
-  bGas.classList.remove('on');bFlip.classList.remove('on');
+  bGas.classList.remove('on');bBrake.classList.remove('on');
   try{navigator.vibrate&&navigator.vibrate(120);}catch(e){}
 }
 const score=()=>Math.floor(Math.max(0,(maxX-60)/PXM)+trick);
@@ -495,6 +596,7 @@ function sfx(n){
     case 'boost':tone(220,.45,{to:900,type:'sawtooth',vol:.04});break;
     case 'crash':tone(300,.5,{to:40,type:'sawtooth',vol:.07});tone(90,.35,{vol:.05,at:.05});break;
     case 'mile':tone(1046,.06);tone(1318,.1,{at:.07});break;
+    case 'slam':tone(160,.16,{to:55,vol:.07});tone(520,.08,{at:.1});tone(780,.12,{at:.16});break;
     case 'start':tone(440,.08);tone(660,.12,{at:.08});break;
   }
 }
@@ -571,14 +673,14 @@ function musicNext(){musicStop();if(mStep)trk=(trk+1)%TRACKS.length;mStep=0;musi
 
 // ================= input =================
 const $=id=>document.getElementById(id);
-const bGas=$('bGas'),bFlip=$('bFlip'),bBoost=$('bBoost'),bMute=$('bMute'),bPause=$('bPause'),boostLbl=$('boostLbl');
+const bGas=$('bGas'),bBrake=$('bBrake'),bBoost=$('bBoost'),bMute=$('bMute'),bPause=$('bPause'),boostLbl=$('boostLbl');
 function hold(el,key){
   const on=e=>{e.preventDefault();audio();try{el.setPointerCapture(e.pointerId);}catch(_){}input[key]=true;el.classList.add('on');};
   const off=()=>{input[key]=false;el.classList.remove('on');};
   el.addEventListener('pointerdown',on);el.addEventListener('pointerup',off);
   el.addEventListener('pointercancel',off);el.addEventListener('lostpointercapture',off);
 }
-hold(bGas,'gas');hold(bFlip,'flip');
+hold(bGas,'gas');hold(bBrake,'brake');
 bBoost.addEventListener('pointerdown',e=>{e.preventDefault();audio();activateBoost();});
 function toggleMute(){muted=!muted;try{localStorage.setItem('cleomania_mute',muted?'1':'0');}catch(e){}bMute.textContent=muted?'OFF':'SND';
   if(muted)musicStop();else if(state!=='title'&&state!=='paused')musicStart();}
@@ -590,13 +692,13 @@ bMute.textContent=muted?'OFF':'SND';
 bMute.addEventListener('pointerdown',e=>{e.preventDefault();e.stopPropagation();audio();toggleMute();});
 bPause.addEventListener('pointerdown',e=>{e.preventDefault();e.stopPropagation();togglePause();});
 function togglePause(){
-  if(state==='play'){state='paused';input.gas=input.flip=false;document.body.classList.remove('play');musicStop();}
+  if(state==='play'){state='paused';input.gas=input.brake=false;document.body.classList.remove('play');musicStop();}
   else if(state==='paused'){state='play';document.body.classList.add('play');musicStart();}
 }
 function begin(){
   if(state==='over')reset();
   state='play';document.body.classList.add('play');sfx('start');musicNext();
-  segShown=Math.floor((bike.x+BBL/2)/BL);banner={text:BIO[0].name,t:0};
+  segShown=segOf(bike.x+BBL/2);banner={text:segName(segShown),t:0};
 }
 function tapScreen(){
   if(state==='title')begin();
@@ -622,17 +724,19 @@ if(window.visualViewport)visualViewport.addEventListener('resize',()=>{
 addEventListener('keydown',e=>{
   const k=e.key;audio();
   if(k==='ArrowRight'||k==='d'||k==='D'){input.gas=true;e.preventDefault();}
-  else if(k==='ArrowLeft'||k==='a'||k==='A'){input.flip=true;e.preventDefault();}
+  else if(k==='ArrowLeft'||k==='a'||k==='A'){input.brake=true;e.preventDefault();}
   else if(k===' '||k==='ArrowUp'||k==='w'||k==='W'||k==='Enter'){e.preventDefault();if(state==='play')activateBoost();else tapScreen();}
   else if(k==='p'||k==='P'||k==='Escape')togglePause();
   else if(k==='m'||k==='M')toggleMute();
+  else if(k==='g'||k==='G')DBG.overlay=!DBG.overlay;
+  else if(DBG.on&&(k==='['||k===']'))place(Math.max(60,bike.x+(k===']'?3900:-3900)));
 });
 addEventListener('keyup',e=>{
   const k=e.key;
   if(k==='ArrowRight'||k==='d'||k==='D')input.gas=false;
-  if(k==='ArrowLeft'||k==='a'||k==='A')input.flip=false;
+  if(k==='ArrowLeft'||k==='a'||k==='A')input.brake=false;
 });
-addEventListener('blur',()=>{input.gas=input.flip=false;});
+addEventListener('blur',()=>{input.gas=input.brake=false;});
 document.addEventListener('visibilitychange',()=>{if(document.hidden){if(state==='play')togglePause();musicStop();}else if(state==='over'||state==='crash')musicStart();});
 let lastLbl='',lastCls='';
 function updButtons(){
@@ -645,7 +749,7 @@ function updButtons(){
 // ================= update =================
 function update(dt){
   time+=dt;
-  if(state==='play'||state==='crash'||state==='title'){
+  if(!DBG.still&&(state==='play'||state==='crash'||state==='title')){
     acc+=dt;let n=0;
     while(acc>=DT&&n<24){phys(DT);acc-=DT;n++;}
     if(n>=24)acc=0;
@@ -657,10 +761,10 @@ function update(dt){
     const m=Math.floor((maxX-60)/PXM/100);
     if(m>lastMile){lastMile=m;flash=0.9;sfx('mile');}
     if(boostOn>0){boostOn-=dt;boost=Math.max(0,boostOn/BOOST_T);if(boostOn<=0)endBoost();}
-    const seg=Math.floor((bike.x+BBL/2)/BL);
-    if(seg!==segShown){segShown=seg;banner={text:BIO[((seg%NB)+NB)%NB].name,t:0};}
+    const seg=segOf(bike.x+BBL/2);
+    if(seg!==segShown){segShown=seg;banner={text:segName(seg),t:0};}
     if(wheels[0].c&&input.gas&&wheels[0].vt>40&&Math.random()<0.45){
-      const h=rearAxle();biome(h[0]);dust(h[0],h[1]-5,BIO[bA].edge,1,40);
+      const h=rearAxle();climate(h[0]);groundPal();dust(h[0],h[1]-5,gEdge,1,40);
     }
   }
   updButtons();
@@ -718,7 +822,7 @@ function outlined(s,x,y,size,col,shadow){
 // ================= background =================
 const bwt=(cA,cB,cT,b)=>(cA===b?1-cT:0)+(cB===b?cT:0);
 const BAYER=[0,8,2,10,12,4,14,6,3,11,1,9,15,7,13,5].map(v=>(v+0.5)/16);
-let skyCache={key:'',pat:null};
+let skyCache={key:'',pat:null},hazeC=[200,220,240];
 function skyPattern(st,sb){
   const key=st.map(v=>v|0).join()+'|'+sb.map(v=>v|0).join()+'|'+H;
   if(skyCache.key===key)return skyCache.pat;
@@ -733,7 +837,7 @@ function skyPattern(st,sb){
   skyCache={key,pat:ctx.createPattern(c,'repeat')};return skyCache.pat;
 }
 function drawSky(cA,cB,cT){
-  const st=cT>0?gpal(cA,cB,cT,'skyT'):BIO[cA].skyT,sb=cT>0?gpal(cA,cB,cT,'skyB'):BIO[cA].skyB;
+  const st=cT>0?gpal(cA,cB,cT,'skyT'):BIO[cA].skyT,sb=cT>0?gpal(cA,cB,cT,'skyB'):BIO[cA].skyB;hazeC=sb;
   ctx.fillStyle=skyPattern(st,sb);ctx.fillRect(0,0,W,H);
   const dw=bwt(cA,cB,cT,DESERT);
   const sr=Math.round(8+7*dw),sx=Math.round(W*0.78),sy=Math.round(H*0.17);
@@ -795,13 +899,19 @@ function canopy(fx,s,cw,amp){ // row of rounded tree crowns
 function backProf(b,fx,dh){
   if(b===ALPS){const w=fx+20*noise(fx/110,SEED+107),r=1-Math.abs(noise(w/75,SEED+105)),r2=1-Math.abs(noise(w/24,SEED+108));return 32+40*r*r+8*r2*r2*r+3*noise(fx/9,SEED+106);}
   if(b===FOREST)return 34+16*noise(fx/80,SEED+161)+canopy(fx,SEED+162,7,4);
+  if(b===AACHEN)return 26+8*noise(fx/70,SEED+191)+5*noise(fx/23,SEED+192); // Lousberg and Eifel hills
   if(b===DESERT){const c=Math.floor(fx/140),d=Math.abs(fx-(c*140+70))/14;return 24+2*noise(fx/30,SEED+171)+(hash(c,SEED+172)<0.4&&d<1?10*(d<0.6?1:1-(d-0.6)/0.4):0);} // distant plateau with buttes
   return dh; // coast: flat sea surface
 }
-const BACKC=[[180,195,223],[134,174,156],[206,158,150],SEA];
+const BACKC=[[180,195,223],[134,174,156],[206,158,150],SEA,[150,172,168]];
 function farProf(b,fx){
   if(b===ALPS){const w=fx+22*noise(fx/90,SEED+103),r=1-Math.abs(noise(w/55,SEED+101)),r2=1-Math.abs(noise(w/19,SEED+104));return 24+42*r*r+10*r2*r2*r+3*noise(fx/7,SEED+102);}
   if(b===FOREST)return 20+10*noise(fx/55,SEED+163)+5*noise(fx/21,SEED+166)+canopy(fx,SEED+164,5,5)+canopy(fx+2.5,SEED+165,9,3);
+  if(b===AACHEN){ // old-town rooftops, some gables, the odd church spire
+    const c=Math.floor(fx/9),u=fx/9-c,r=hash(c,SEED+195);let h=14+12*hash(c,SEED+196);
+    if(r<0.6)h+=5*(1-Math.abs(2*u-1));else if(r>0.93&&Math.abs(u-0.5)<0.12)h+=16;
+    return h;
+  }
   if(b===DESERT){ // canyon rim with terraced gorges
     let h=44+3*noise(fx/40,SEED+113);
     const c=Math.floor(fx/170),cx=c*170+85+(hash(c,SEED+114)-0.5)*60,w=28+hash(c,SEED+115)*30,dep=24+hash(c,SEED+116)*16,d=Math.abs(fx-cx)/w;
@@ -812,14 +922,15 @@ function farProf(b,fx){
   const cx=c*260+70+hash(c,SEED+122)*120,wid=26+hash(c,SEED+123)*30,ht=5+hash(c,SEED+124)*6,dx=(fx-cx)/wid;
   return Math.abs(dx)<1?ht*(1-dx*dx):0;
 }
-const FARC=[[132,150,189],[91,138,110],[198,111,72],[79,125,99]];
+const FARC=[[132,150,189],[91,138,110],[198,111,72],[79,125,99],[118,126,148]];
 function midHill(b,fx){ // hill line without trees: where houses and landmarks stand
   if(b===ALPS)return 16+11*noise(fx/60,SEED+131);
   if(b===FOREST)return 14+8*noise(fx/50,SEED+181);
+  if(b===AACHEN)return 12+5*noise(fx/60,SEED+201);
   return midProf(b,fx);
 }
 function lakeK(fx){ // 0..1: how much of an alpine lake is here (one per Alps stretch)
-  const wx=fx/0.35,cyc=BL*NB,loc=((wx%cyc)+cyc)%cyc,d=Math.abs(loc-0.42*BL)/420;
+  const wx=fx/0.35-loopAt(ALPS),cyc=BL*NB,loc=((wx%cyc)+cyc)%cyc,d=Math.abs(loc-0.42*BL)/420;
   return d<1?1-sstep(0.75,1,d):0;
 }
 function midProf(b,fx){
@@ -827,10 +938,12 @@ function midProf(b,fx){
     if(hash(c,SEED+132)<0.6){const tt=(8+hash(c,SEED+133)*8)-Math.abs(fx-(c*11+5))*2.3;if(tt>0)h+=tt;}return h;}
   if(b===FOREST){let h=14+8*noise(fx/50,SEED+181);const c=Math.floor(fx/6);
     const tt=(12+hash(c,SEED+182)*12)-Math.abs(fx-(c*6+3))*(hash(c,SEED+183)<0.3?1.2:2.4);if(tt>0)h+=tt;return h;}
+  if(b===AACHEN){const c=Math.floor(fx/7),u=fx/7-c; // rows of town houses on the hill
+    return 12+5*noise(fx/60,SEED+201)+5+4*hash(c,SEED+202)+2*(1-Math.abs(2*u-1));}
   if(b===DESERT)return 10+7*noise(fx/45,SEED+141)+3*noise(fx/17,SEED+142);
   return 9+6*noise(fx/40,SEED+151);
 }
-const MIDC=[[60,125,75],[38,90,60],[206,128,80],[232,207,152]],MIDT=[null,null,[232,168,112],[124,179,90]];
+const MIDC=[[60,125,75],[38,90,60],[206,128,80],[232,207,152],[136,106,96]],MIDT=[null,null,[232,168,112],[124,179,90],[84,80,96]];
 const seaMask=new Uint8Array(4096);
 function strataStrip(k){
   const c=document.createElement('canvas');c.width=1;c.height=160;const x=c.getContext('2d');
@@ -847,14 +960,14 @@ function strataStrip(k){
 }
 const STRATA=[strataStrip(1),strataStrip(0.84)];
 // the Matterhorn: one famous peak in the first Alps stretch
-const MX=3600*0.12;
+const MX=(loopAt(ALPS)+3600)*0.12;
 function matterhorn(fx){
   const dx=fx-MX;if(dx<-48||dx>34)return 0;
   let h=dx<0?84*(1+dx/48):84*(1-dx/34);
   if(dx>-5&&dx<3)h+=2+(dx>0?1:0); // the hooked summit
   return h;
 }
-const topBuf=new Float32Array(4096),mistBuf=new Float32Array(4096),seaBot=new Float32Array(4096);
+const backTop=new Float32Array(4096),midTop=new Float32Array(4096),topBuf=new Float32Array(4096),mistBuf=new Float32Array(4096),seaBot=new Float32Array(4096);
 function envOut(t){return 1-sstep(0,0.65,t);}   // outgoing biome's scenery shrinks away
 function envIn(t){return sstep(0.35,1,t);}      // incoming biome's scenery rises
 function drawFarLand(b,e,fx,i,yb,sea){
@@ -863,6 +976,11 @@ function drawFarLand(b,e,fx,i,yb,sea){
   const y=yb-Math.round(h),col=FARC[b],bot=yb+1; // silhouette only down to its baseline
   const fl=bot-y;
   if(y<topBuf[i])topBuf[i]=y;
+  if(b===AACHEN){ // skyline with rows of windows
+    ctx.fillStyle=rgbc(col);ctx.fillRect(i,y,1,fl);const ix=Math.round(fx);
+    if(ix%3===1)for(let yy=y+4;yy<bot-2;yy+=4)if(hash(ix*7+yy,SEED+197)<0.4){ctx.fillStyle='#b4c0d4';ctx.fillRect(i,yy,1,1);}
+    return;
+  }
   if(b===DESERT){ // layered sandstone
     const src=clamp(y-(yb-60)+Math.round(3*noise(fx/45,SEED+117)),0,159),len=Math.min(160-src,fl);
     ctx.drawImage(STRATA[0],0,src,1,len,i,y,1,len);
@@ -882,6 +1000,11 @@ function drawFarLand(b,e,fx,i,yb,sea){
   for(let k=0;k<nk;k++){const r=hash(Math.round(fx)*5+k,SEED+780),dy=4+Math.floor(r*2.5*Math.max(4,h-6));if(r<0.4&&dy<fl-2)ctx.fillRect(i,y+dy,1,1+(r<0.12?1:0));}
   if(b===ALPS&&raw>50&&e>0.3){ctx.fillStyle=desc?'#d5deef':'#f4f7ff';ctx.fillRect(i,y,1,Math.round((raw-50)*0.8*e)+1);}
 }
+function haze(top,a){ // one translucent fill in the horizon colour below a per-column skyline
+  ctx.fillStyle=rgbc(hazeC);ctx.globalAlpha=a;ctx.beginPath();ctx.moveTo(0,H);
+  for(let i=0;i<W;i++){ctx.lineTo(i,top[i]);ctx.lineTo(i+1,top[i]);}
+  ctx.lineTo(W,H);ctx.closePath();ctx.fill();ctx.globalAlpha=1;
+}
 function drawBackdrop(){
   const base=Math.round(Hc-18+clamp(camYi*0.05,-12,12));
   const hz=Math.round(Hc-45+clamp(camYi*0.04,-8,8));
@@ -890,16 +1013,18 @@ function drawBackdrop(){
   for(let i=0;i<W;i++){
     const fx=i+o1;biome(fx/0.05);
     const A=bA,B=bB,t=bT,wA=A===COAST?0:envOut(t),wB=B===COAST?0:envIn(t);
-    if(wA+wB>0.001){ctx.fillStyle=rgbc(mix(BACKC[A],BACKC[B],wB/(wA+wB)));ctx.fillRect(i,base-8,1,H-base+8);}
+    backTop[i]=H;
+    if(wA+wB>0.001){ctx.fillStyle=rgbc(mix(BACKC[A],BACKC[B],wB/(wA+wB)));ctx.fillRect(i,base-8,1,H-base+8);backTop[i]=base-8;}
     for(let k=0;k<2;k++){
       const b=k?B:A,e=k?envIn(t):envOut(t);
       if(e<=0.001||b===COAST)continue;
       const raw=backProf(b,fx,0),h=raw*e;if(h<0.5)continue;
-      const y=base-8-Math.round(h);
+      const y=base-8-Math.round(h);if(y<backTop[i])backTop[i]=y;
       ctx.fillStyle=rgbc(BACKC[b]);ctx.fillRect(i,y,1,base-8-y+1);
       if(b===ALPS&&raw>58&&e>0.25){ctx.fillStyle='#eef3fb';ctx.fillRect(i,y,1,Math.round((raw-58)*0.7*e)+1);}
     }
   }
+  haze(backTop,0.18); // extra haze for the most distant layer
   // --- far layer (parallax 0.12): sea, islands, distant shores, then headlands in front ---
   const o2=Math.floor(camXi*0.12);
   for(let i=0;i<W;i++){
@@ -940,15 +1065,6 @@ function drawBackdrop(){
       drawFarLand(b,e,fx,i,yb,seaMask[i]===1);
       const hh=farProf(b,fx)*e;if(hh>=0.5)topBuf[i]=Math.min(before,yb-Math.round(hh));
     }
-    // headland in front where land meets the sea (rounded, grassy)
-    const hp=cw>0&&cw<0.6?sstep(0,0.12,cw)*(1-sstep(0.22,0.6,cw)):0;
-    const hl=hp>0?44*Math.sqrt(hp)*(0.85+0.15*noise(fx/11,SEED+118)):0;
-    if(hl>0.5){
-      const y=base-Math.round(hl);topBuf[i]=Math.min(topBuf[i],y);
-      ctx.fillStyle='#6f8f6a';ctx.fillRect(i,y,1,base-y+1);
-      ctx.fillStyle='#8aa97c';ctx.fillRect(i,y,1,2);
-      ctx.fillStyle='#5a7258';if(hash(Math.round(fx),SEED+119)<0.3)ctx.fillRect(i,y+3+Math.floor(hash(Math.round(fx),SEED+120)*Math.max(2,hl-4)),1,2);
-    }
   }
   // sea details only where open water is visible
   ctx.fillStyle='#2676ae';
@@ -966,7 +1082,7 @@ function drawBackdrop(){
     if(x>=0&&x+6<W&&seaMask[x]&&seaMask[x+5]&&topBuf[x]>yb+6&&topBuf[x+5]>yb+6&&seaBot[x]>yb+7&&seaBot[x+5]>yb+7)ctx.drawImage(SPR.sail,x,yb);
   }
   { // a steamship crossing the bay (one per coast stretch)
-    const cyc=BL*NB*0.12,start=(BL*COAST+BL*0.3)*0.12,k0=Math.floor((o2-start)/cyc);
+    const cyc=BL*NB*0.12,start=(loopAt(COAST)+BL*0.3)*0.12,k0=Math.floor((o2-start)/cyc);
     for(let k=k0;k<=k0+1;k++){
       const sx=Math.round(start+k*cyc+time*4-o2),sy=hz+4;
       if(sx>=0&&sx+16<W&&seaMask[sx]&&seaMask[sx+15]&&topBuf[sx]>sy+7&&topBuf[sx+15]>sy+7&&seaBot[sx]>sy+8&&seaBot[sx+15]>sy+8){
@@ -982,7 +1098,7 @@ function drawBackdrop(){
   if(Math.abs(o2+W/2-MX)<W/2+60){
     for(let i=0;i<W;i++){
       const fx=i+o2,mh=matterhorn(fx);if(mh<=0)continue;
-      const y=base-Math.round(mh),left=fx<MX;
+      const y=base-Math.round(mh),left=fx<MX;if(y<topBuf[i])topBuf[i]=y;
       ctx.fillStyle=left?'#8f9ec4':'#66729a';ctx.fillRect(i,y,1,H-y);
       const sn=Math.round(Math.max(0,(mh-34)*0.55));
       ctx.fillStyle=left?'#f6f9ff':'#cfd8ea';ctx.fillRect(i,y,1,sn);
@@ -990,6 +1106,15 @@ function drawBackdrop(){
       for(let k=3;k<sn;k+=5)if(hash(Math.round(fx)*7+k,SEED+777)<0.45)ctx.fillRect(i,y+k,1,2);
     }
   }
+  // Aachen's landmarks on the skyline (positions in far-layer coordinates)
+  for(const [sp,lx] of [[SPR.dom,190],[SPR.rathaus,238],[SPR.superc,430]]){
+    const x0=Math.round(lx-o2-sp.width/2),y0=base-sp.height+1;if(x0>=W||x0+sp.width<=0)continue;
+    ctx.drawImage(sp,x0,y0);
+    for(let k=0;k<sp.width;k++){const i=x0+k;if(i>=0&&i<W&&sp.tops[k]<sp.height)topBuf[i]=Math.min(topBuf[i],y0+sp.tops[k]);}
+  }
+  // atmospheric haze: the distant layers fade towards the horizon colour
+  for(let i=0;i<W;i++)topBuf[i]=Math.min(backTop[i],topBuf[i],seaMask[i]?hz:H);
+  haze(topBuf,0.18);
   // morning mist in the forest
   ctx.fillStyle='#e8f2ea';
   for(let i=0;i<W;i++){const m=mistBuf[i];if(m<0.05)continue;ctx.globalAlpha=0.3*Math.round(m*4)/4;ctx.fillRect(i,base-6,1,4);}
@@ -998,7 +1123,7 @@ function drawBackdrop(){
   const mb=Math.round(Hc+11+clamp(camYi*0.1,-20,22)),o3=Math.floor(camXi*0.35);
   for(let i=0;i<W;i++){
     const fx=i+o3;biome(fx/0.35);
-    const A=bA,B=bB,t=bT;buf[i]=0;
+    const A=bA,B=bB,t=bT;buf[i]=0;midTop[i]=mb;
     {const wA=envOut(t),wB=envIn(t);ctx.fillStyle=rgbc(mix(MIDC[A],MIDC[B],wB/Math.max(0.001,wA+wB)));ctx.fillRect(i,mb,1,H-mb);}
     for(let k=0;k<2;k++){
       const b=k?B:A,e=k?envIn(t):envOut(t);
@@ -1009,11 +1134,12 @@ function drawBackdrop(){
       const h=raw*e;if(h<0.5)continue;
       const hy=mb-Math.round(hill*e);
       if(hy>buf[i])buf[i]=mb-hy;
-      const y=mb-Math.round(h);
+      const y=mb-Math.round(h);if(y<midTop[i])midTop[i]=y;
       const col=MIDC[b];
       ctx.fillStyle=rgbc(col);ctx.fillRect(i,y,1,mb-y+1);
       if(b===FOREST&&hy>y){ctx.fillStyle=rgbc(Math.floor(fx/6)%2?[44,100,68]:[34,82,55]);ctx.fillRect(i,y,1,hy-y+1);} // individual tree crowns
       if(MIDT[b]){ctx.fillStyle=rgbc(MIDT[b]);ctx.fillRect(i,y,1,1);}
+      if(b===AACHEN&&Math.round(fx)%3===1&&y+3<hy-1&&hash(Math.round(fx),SEED+203)<0.5){ctx.fillStyle='#d9c79a';ctx.fillRect(i,y+3,1,1);} // windows
       if(lake>0.8){ // water surface with shimmer
         ctx.fillStyle='#5fa0cf';ctx.fillRect(i,y,1,4);ctx.fillStyle='#a9d8f2';ctx.fillRect(i,y,1,1);
         if(hash(Math.round(fx)+Math.floor(time*2)*131,SEED+150)<0.12){ctx.fillStyle='#e6f6ff';ctx.fillRect(i,y+1+Math.floor(hash(Math.round(fx),SEED+151)*3),1,1);}
@@ -1021,6 +1147,7 @@ function drawBackdrop(){
       if(b===DESERT){ctx.fillStyle='#b8703f';if(noise(fx/7,SEED+144)>0.25)ctx.fillRect(i,y+4+Math.round(noise(fx/30,SEED+146)),1,1);if(noise(fx/9,SEED+145)>0.35)ctx.fillRect(i,y+9+Math.round(noise(fx/25,SEED+147)),1,1);}
     }
   }
+  haze(midTop,0.1);
   // mid-layer landmarks (chalets, cactus and palm silhouettes, arches, acacias in the savanna)
   const c0=Math.floor((o3-20)/90),c1=Math.floor((o3+W+20)/90);
   for(let c=c0;c<=c1;c++){
@@ -1046,18 +1173,64 @@ function drawBackdrop(){
     }
   }
 }
+// scenery niches: [sprite, weight, how well the current climate (pE,pM,pT,pS,pU,pA) suits it 0..1, grows in the city].
+// Species thin out one by one at the edges of their niche, so regions blend without a seam.
+const NICHE=[
+ [SPR.lamp,.3,  ()=>sstep(.35,.75,pU),1],
+ [SPR.bench,.07,()=>sstep(.35,.75,pU),1],
+ [SPR.stall,.05,()=>sstep(.55,.9,pU),1],
+ [SPR.pine,.4,  ()=>bump(pE,.5,2)*bump(pT,-1,.3)*bump(pS,-1,.12)],
+ [SPR.pineS,.15,()=>bump(pE,.5,2)*bump(pT,-1,.3)*bump(pS,-1,.12)],
+ [SPR.chalet,.08,()=>bump(pE,.7,2)*bump(pT,-1,.2)],
+ [SPR.cow,.1,   ()=>bump(pE,.45,2)*bump(pT,-1,.32)*bump(pM,.5,.8)],
+ [SPR.fence,.1, ()=>bump(pE,.42,2)*bump(pT,-1,.32)*bump(pM,.5,.8)],
+ [SPR.flowers,.12,()=>bump(pM,.5,.85)*bump(pT,-1,.38)*bump(pS,-1,.4),1],
+ [SPR.rock,.1,  ()=>bump(pE,.45,2)*bump(pT,-1,.5)*bump(pS,-1,.4)],
+ [SPR.birch,.2, ()=>bump(pE,.42,.65)*bump(pT,.2,.36)*bump(pM,.55,.85)],
+ [SPR.log,.1,   ()=>bump(pE,.45,.7)*bump(pT,.22,.38)*bump(pM,.6,.85)],
+ [SPR.fir,.35,  ()=>bump(pM,.65,2)*bump(pT,.2,.5)*bump(pE,-1,.7)*bump(pS,-1,.12)], // no conifers on the lake shore
+ [SPR.oak,.2,   ()=>bump(pM,.7,2)*bump(pT,.36,.6)*bump(pE,-1,.5),1],
+ [SPR.stump,.1, ()=>bump(pM,.7,2)*bump(pT,.33,.55)*bump(pE,-1,.55)],
+ [SPR.mush,.12, ()=>bump(pM,.7,2)*bump(pT,.33,.55)*bump(pE,-1,.55)],
+ [SPR.fern,.13, ()=>bump(pM,.7,2)*bump(pT,.33,.55)*bump(pE,-1,.55)],
+ [SPR.deer,.06, ()=>bump(pM,.7,2)*bump(pT,.33,.55)*bump(pE,-1,.55)],
+ [SPR.cabin,.05,()=>bump(pM,.7,2)*bump(pT,.33,.55)*bump(pE,-1,.55)],
+ [SPR.acacia,.3,()=>bump(pM,.2,.45)*bump(pT,.55,.85)*bump(pS,-1,.3)],
+ [SPR.drybush,.3,()=>bump(pM,.15,.45)*bump(pT,.55,.9)*bump(pS,-1,.4)],
+ [SPR.mound,.15,()=>bump(pM,.22,.42)*bump(pT,.6,.82)*bump(pS,-1,.2)],
+ [SPR.bgrass,.2,()=>bump(pM,.15,.5)*bump(pT,.55,.9)*(1-0.9*sstep(.75,.95,pS))],
+ [SPR.rock2,.12,()=>bump(pT,.6,2)*bump(pM,-1,.4)*bump(pS,-1,.8)],
+ [SPR.barrel,.12,()=>bump(pM,-1,.25)*bump(pT,.72,2)*bump(pS,-1,.75)],
+ [SPR.cactus,.38,()=>sstep(.45,.75,pA)],
+ [SPR.tumble,.08,()=>sstep(.4,.7,pA)],
+ [SPR.skull,.06,()=>sstep(.5,.8,pA)],
+ [SPR.camel,.06,()=>sstep(.5,.8,pA)],
+ [SPR.arch,.08, ()=>sstep(.6,.9,pA)],
+ [SPR.hoodoo,.1,()=>sstep(.55,.85,pA)],
+ [SPR.drift,.08,()=>bump(pS,.45,2)*bump(pT,.5,2)],
+ [SPR.palm,.35, ()=>bump(pS,.5,2)*bump(pT,.6,2)],
+ [SPR.crab,.15, ()=>sstep(.55,.85,pS)],
+ [SPR.surf,.1,  ()=>sstep(.8,.97,pS)],
+ [SPR.umbrella,.15,()=>sstep(.8,.97,pS)],
+ [SPR.hut,.15,  ()=>sstep(.85,.98,pS)],
+ [SPR.tower,.1, ()=>sstep(.85,.98,pS)],
+];
+const nSuit=new Float32Array(NICHE.length);
 const DCS=44;
 function decorCand(c){ // deterministic candidate for cell c, or null
-  const x=c*DCS+hash(c,SEED+601)*24;if(x<200)return null;
-  biome(x);
-  let list,dens;
-  if(bT>0.15&&bT<0.85&&hash(c,SEED+604)<0.75){list=TDECOR[bA];dens=TDENS[bA];}
-  else{const b=bT<0.5?bA:bB;list=DECOR[b];dens=DENS[b];}
-  const grove=clamp(0.5+0.7*noise(x/380,SEED+620),0,1); // groves and clearings
-  if(hash(c,SEED+602)>dens*(0.45+0.9*grove))return null;
-  const q=hash(c,SEED+603);let sp=list[list.length-1][0],a=0;
-  for(const [s2,w] of list){a+=w;if(q<a){sp=s2;break;}}
-  const kind=KIND.get(sp)||'small',w=Math.round(sp.width*DSCALE),h=Math.round(sp.height*DSCALE);
+  const x=c*DCS+hash(c,SEED+601)*24;if(x<ELX+70)return null; // keep the start and the Elisenbrunnen clear
+  climate(x);
+  const wild=1-sstep(0.3,0.7,pU); // nature gives way to the city
+  let tot=0,best=0;
+  for(let k=0;k<NICHE.length;k++){const n=NICHE[k][2]()*(NICHE[k][3]?1:wild);nSuit[k]=n*NICHE[k][1];tot+=nSuit[k];if(n>best)best=n;}
+  if(tot<=0)return null;
+  const dens=0.34+0.46*sstep(0.25,0.85,pM)+0.12*bump(pM,0.15,0.5)*bump(pT,0.5,0.9)+0.14*bump(pS,0.3,0.85); // lusher, savanna, dunes: more
+  const grove=clamp(0.5+0.9*noise(x/380,SEED+620),0,1);            // groves and clearings
+  if(hash(c,SEED+602)>dens*(0.45+0.9*grove)*best)return null;      // thins out at niche edges
+  let q=hash(c,SEED+603)*tot,sp=NICHE[NICHE.length-1][0];
+  for(let k=0;k<NICHE.length;k++){q-=nSuit[k];if(q<0){sp=NICHE[k][0];break;}}
+  const kind=KIND.get(sp)||'small',sc=DSCALE*(kind==='tree'?0.88+0.24*hash(c,SEED+607):1); // trees vary in size
+  const w=Math.round(sp.width*sc),h=Math.round(sp.height*sc);
   const xl=x-w/2+1,xr=x+w/2-1,hl=terrainH(xl),hm=terrainH(x),hr=terrainH(xr);
   const steep=Math.max(Math.abs(hr-hl)/Math.max(1,xr-xl),Math.abs(slope(x)));
   const maxS=kind==='build'?0.22:kind==='animal'?0.3:kind==='tree'?0.75:0.9;
@@ -1072,7 +1245,24 @@ function decorBlocks(a,b){ // can these two not stand together?
   if((a.kind==='small'&&b.kind==='tree')||(a.kind==='tree'&&b.kind==='small'))return false;
   return true;
 }
+const ELX=250; // the Elisenbrunnen stands right where every ride starts
+const HOUSES=[SPR.house1,SPR.house2,SPR.house3,SPR.house4,SPR.house5],HCELL=22;
+function drawStreet(){ // Aachen's town houses, side by side in one slot per HCELL world px; gaps grow as the city ends
+  const c0=Math.floor((camXi-30)/HCELL),c1=Math.floor((camXi+W+30)/HCELL);
+  for(let c=c0;c<=c1;c++){
+    const x=c*HCELL+HCELL/2;if(x<ELX+70||x>AL)continue;
+    climate(x);if(hash(c,SEED+640)>0.95*sstep(0.5,0.9,pU))continue;
+    const sp=HOUSES[Math.floor(hash(c,SEED+641)*HOUSES.length)],w=Math.round(sp.width*DSCALE),h=Math.round(sp.height*DSCALE);
+    const xl=x-w/2+1,xr=x+w/2-1,hl=terrainH(xl),hm=terrainH(x),hr=terrainH(xr);
+    if(Math.abs(hr-hl)/(xr-xl)>0.3)continue;                                          // too steep for a house
+    if(rampsOf(AACHEN,xl)+rampsOf(AACHEN,x)+rampsOf(AACHEN,xr)>0.5)continue;           // keep kickers clean
+    ctx.drawImage(hash(c,SEED+642)<0.5?flipped(sp):sp,Math.round(x-camXi-w/2),Math.round(Hc-(Math.min(hl,hm,hr)-camYi))-h+3,w,h);
+  }
+}
 function drawDecor(){
+  if(camXi<AL)drawStreet();
+  { const sp=SPR.elisen,w=Math.round(sp.width*DSCALE),h=Math.round(sp.height*DSCALE),sx=Math.round(ELX-camXi-w/2);
+    if(sx<W&&sx+w>0){const g=Math.min(terrainH(ELX-w/2+1),terrainH(ELX),terrainH(ELX+w/2-1));ctx.drawImage(sp,sx,Math.round(Hc-(g-camYi))-h+3,w,h);} }
   const c0=Math.floor((camXi-50)/DCS),c1=Math.floor((camXi+W+50)/DCS);
   let prev=decorCand(c0-1),cur=decorCand(c0);
   for(let c=c0;c<=c1;c++){
@@ -1089,30 +1279,37 @@ function drawDecor(){
   }
 }
 function drawGround(){
+  let prevGy=terrainH(camXi-1),cell=NaN,cTop,cEdge,soil,dark;
   for(let i=0;i<W;i++){
-    const wx=camXi+i,gy=terrainH(wx);biome(wx);
+    const wx=camXi+i,gy=terrainH(wx),sl=gy-prevGy;prevGy=gy;
     const y0=Math.round(Hc-(gy-camYi));if(y0>=H)continue;
-    let top,edge,soil,dark;
-    if(bT===0){const B=BIO[bA];top=B.topS;edge=B.edgeS;soil=B.soilS;dark=B.darkS;}
-    else{top=rgbc(gpal(bA,bB,bT,'top'));edge=rgbc(gpal(bA,bB,bT,'edge'));soil=rgbc(gpal(bA,bB,bT,'soil'));dark=rgbc(gpal(bA,bB,bT,'dark'));}
-    const dom=bT<0.5?bA:bB;
-    if(dom===ALPS&&gy>125){top='#e3edfb';edge='#ffffff';}
+    if(Math.floor(wx/8)!==cell){ // the climate changes slowly: sample it every 8 world px
+      cell=Math.floor(wx/8);climate(cell*8);groundPal();
+      cTop=rgbc(gTop);cEdge=rgbc(gEdge);soil=rgbc(gSoil);dark=rgbc(gDark);
+    }
+    let top=cTop,edge=cEdge;
+    // snow on high, cold, mountainous ground; the snowline rises smoothly as the climate warms
+    const snow=(1-sstep(0.12,0.26,pT))*sstep(0.55,0.8,pE);
+    if(gy>125+(1-snow)*400+6*noise(wx/70,SEED+913)&&Math.abs(sl)<0.9){top='#e3edfb';edge='#ffffff';}
     ctx.fillStyle=soil;ctx.fillRect(i,y0+4,1,H-y0-4);
     ctx.fillStyle=top;ctx.fillRect(i,y0+1,1,3);
     ctx.fillStyle=edge;ctx.fillRect(i,y0,1,1);
     ctx.fillStyle=dark;ctx.fillRect(i,y0+4,1,1);
+    const cx=((wx%3)+3)%3; // cobblestones in the city: staggered joints, fading out with the city
+    if(pU>0.02&&hash(Math.floor(wx/3),SEED+930)<pU*1.2){if(cx===0)ctx.fillRect(i,y0+1,1,2);if(cx===2)ctx.fillRect(i,y0+3,1,1);}
     if(noise(wx/60,SEED+907)>-0.15)ctx.fillRect(i,y0+17+Math.round(3*noise(wx/30,SEED+903)),1,1);   // patchy soil layers
     if(noise(wx/80,SEED+908)>0.1)ctx.fillRect(i,y0+33+Math.round(5*noise(wx/45,SEED+905)),1,1);
     if(noise(wx/50,SEED+909)>0.45)ctx.fillRect(i,y0+48+Math.round(4*noise(wx/35,SEED+910)),1,1);
     const st=hash(Math.floor(wx/4),SEED+911);
-    if(st<0.035){ctx.fillStyle=rgbc(mix(BIO[dom].dark,[170,165,150],0.55));ctx.fillRect(i,y0+12+Math.floor(hash(Math.floor(wx/4),SEED+912)*40),1,2);} // buried stones
+    if(st<0.035){ctx.fillStyle=rgbc(mix(gDark,[170,165,150],0.55));ctx.fillRect(i,y0+12+Math.floor(hash(Math.floor(wx/4),SEED+912)*40),1,2);} // buried stones
     for(let k=0;k<3;k++)if(hash(wx*3+k,SEED+900)<0.33)ctx.fillRect(i,y0+6+k*13+Math.floor(hash(wx*3+k,SEED+901)*11),1,1);
     if(hash(wx,SEED+904)<0.035){ctx.fillStyle='#b9b2a6';ctx.fillRect(i,y0+8+Math.floor(hash(wx,SEED+906)*24),2,1);} // pebbles
     const hv=hash(wx,SEED+902);
-    if(hv<0.07){ctx.fillStyle=top;ctx.fillRect(i,y0-1,1,1);}                         // grass tufts
-    if(bT>0.2&&bT<0.8&&bA===FOREST&&hv>0.93){ctx.fillStyle='#d8c46a';ctx.fillRect(i,y0-1,1,1);} // dry savanna grass
-    if(dom===FOREST&&hv>0.9){ctx.fillStyle=hv>0.96?'#d9822b':'#b5452b';ctx.fillRect(i,y0+1,1,1);} // fallen leaves
-    if(dom===COAST&&hv>0.97){ctx.fillStyle='#ffffff';ctx.fillRect(i,y0+2,1,1);}          // shells
+    if(hv<0.07*(1-pU)){ctx.fillStyle=top;ctx.fillRect(i,y0-1,1,1);}                  // grass tufts (not on cobblestones)
+    const dry=bump(pM,0.2,0.48)*bump(pT,0.5,0.85),leafy=bump(pM,0.62,1)*bump(pT,0.3,0.55),shore=sstep(0.6,0.95,pS);
+    if(hv>1-0.07*dry){ctx.fillStyle='#d8c46a';ctx.fillRect(i,y0-1,1,1);}                         // dry savanna grass
+    if(hv>1-0.1*leafy){ctx.fillStyle=hv>1-0.04*leafy?'#d9822b':'#b5452b';ctx.fillRect(i,y0+1,1,1);} // fallen leaves
+    if(hv>1-0.03*shore){ctx.fillStyle='#ffffff';ctx.fillRect(i,y0+2,1,1);}                       // shells
   }
 }
 
@@ -1287,6 +1484,22 @@ function drawHUD(){
     ctx.globalAlpha=1;
   }
 }
+function drawDebug(){ // climate curves across the visible ground, values at the bike, frame time
+  const y0=Math.round(H*0.34),ch=34,lines=[['E',[255,255,255]],['M',[79,216,232]],['T',[255,154,60]],['S',[74,125,255]],['A',[255,79,79]]];
+  const span=16000,wx=i=>bike.x+(i-W/2)*span/W; // chart shows 8000 px behind and ahead of the bike
+  ctx.fillStyle='rgba(10,10,25,.62)';ctx.fillRect(0,y0,W,ch+24);
+  ctx.fillStyle='rgba(255,255,255,.18)';
+  for(let i=1;i<W;i++)if(segOf(wx(i))!==segOf(wx(i-1)))ctx.fillRect(i,y0+14,1,ch+10); // biome seams
+  for(let i=0;i<W;i+=2){
+    climate(wx(i));const v=[pE,pM,pT,pS,pA];
+    for(let k=0;k<5;k++){ctx.fillStyle=rgb(lines[k][1]);ctx.fillRect(i,y0+ch+20-Math.round(v[k]*ch),2,1);}
+  }
+  ctx.fillStyle='rgba(255,210,63,.8)';ctx.fillRect(Math.round(W/2),y0+14,1,ch+10);
+  climate(bike.x);
+  const f=v=>v.toFixed(2).slice(1);
+  txt(regionName()+' X'+Math.round(bike.x)+' '+DBG.ms.toFixed(1)+'MS',4,y0+3,'#ffd23f',8,'left');
+  txt('E'+f(pE)+' M'+f(pM)+' T'+f(pT)+' S'+f(pS)+' A'+f(pA),W-4,y0+3,'#ffffff',8,'right');
+}
 function panel(w,h){
   const x=Math.round(W/2-w/2),y=Math.round(H/2-h/2);
   ctx.fillStyle='rgba(15,10,30,.78)';ctx.fillRect(x,y,w,h);
@@ -1298,9 +1511,9 @@ function drawTitle(){
   const big=W>=330?24:16,ty=Math.round(H*0.12)+4;
   outlined('CLEOMANIA',W/2,ty,big,'#ffd23f','#e63946');
   if(Math.floor(time*2)%2===0)txt(touch?'TAP TO RIDE':'PRESS SPACE TO RIDE',W/2,ty+big+10,'#ffffff',8,'center');
-  const lines=touch?['PEDAL: RIDE FORWARD','FLIP: TILT BACKWARDS','FLIP IN THE AIR = BACKFLIP','TRICKS CHARGE THE BOOST',"DON'T LAND ON YOUR HEAD!"]
-                   :['RIGHT: PEDAL   LEFT: FLIP','FLIP IN THE AIR = BACKFLIP','TRICKS CHARGE THE BOOST','SPACE: BOOST    P: PAUSE',"DON'T LAND ON YOUR HEAD!"];
-  const y0=Math.round(H-lines.length*11-16);
+  const lines=touch?['PEDAL: RIDE / FRONTFLIP','BRAKE: STOP / BACKFLIP','BOTH NEAR GROUND: SLAM','TRICKS CHARGE THE BOOST',"DON'T LAND ON YOUR HEAD!"]
+                   :['RIGHT: PEDAL / FRONTFLIP','LEFT: BRAKE / BACKFLIP','BOTH NEAR GROUND: SLAM','SPACE: BOOST    P: PAUSE',"DON'T LAND ON YOUR HEAD!"];
+  const y0=Math.round(H-lines.length*11-36); // leaves room for the menu buttons
   const pw=Math.min(W-12,26*8+16);
   ctx.fillStyle='rgba(15,10,30,.6)';ctx.fillRect(Math.round(W/2-pw/2),y0-6,pw,lines.length*11+10);
   lines.forEach((l,i)=>txt(l,W/2,y0+i*11,i===lines.length-1?'#ff9fd1':'#ffffff',8,'center'));
@@ -1350,6 +1563,7 @@ function render(){
   }
   ctx.restore();
   if(state!=='title')drawHUD();
+  if(DBG.overlay)drawDebug();
   if(state==='title')drawTitle();
   else if(state==='over')drawOver();
   else if(state==='paused'){
@@ -1361,11 +1575,14 @@ function render(){
 
 // ================= main loop =================
 reset();
+if(DBG.x){place(DBG.x);begin();}
 let last=performance.now();
 function frame(now){
   let dt=(now-last)/1000;last=now;if(dt>0.05)dt=0.05;if(dt<0)dt=0;
+  const t0=performance.now();
   if(state!=='paused')update(dt);
   render();
+  if(DBG.overlay)DBG.ms+=(performance.now()-t0-DBG.ms)*0.05;
   requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);

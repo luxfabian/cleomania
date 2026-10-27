@@ -2,7 +2,7 @@
 
 A retro, pixel-art bike racer for the browser — made for phones, playable on desktop.
 
-Ride a road bike with a kid trailer through the **Alps**, a **forest**, a **Grand-Canyon-style desert** and the **coast**. Nail your landings to build speed, pull off backflips, charge the boost — and when it's full, a teammate sprints in and pushes you.
+Start in **Aachen** and ride a road bike with a kid trailer through a **forest**, a **Grand-Canyon-style desert**, the **coast** and the **Alps**. Nail your landings to build speed, pull off backflips, charge the boost — and when it's full, a teammate sprints in and pushes you.
 
 ![Gameplay](docs/screenshot.png)
 
@@ -14,17 +14,19 @@ Ride a road bike with a kid trailer through the **Alps**, a **forest**, a **Gran
 
 | Action | Touch | Keyboard |
 |---|---|---|
-| Pedal (accelerate) | hold **PEDAL** (right) | → or D |
-| Flip / lean back | hold **FLIP** (left) | ← or A |
+| Pedal (accelerate) / frontflip in the air | hold **PEDAL** (right) | → or D |
+| Brake / backflip in the air | hold **BRAKE** (left) | ← or A |
+| Slam down (in the air, near the ground) | hold **both** | both |
 | Activate boost | tap **BOOST** when full | Space / ↑ / W |
 | Pause | **II** | P / Esc |
 | Sound on/off | **SND** | M |
 | Music on/off | **MUS** | — |
 
-- **FLIP** turns the bike counter-clockwise at a steady rate while held and stops as soon as you let go. On the ground it lifts the front wheel; in the air it's a backflip.
+- **In the air, PEDAL turns the bike clockwise (frontflip) and BRAKE turns it counter-clockwise (backflip)**, at a steady rate while held. The rotation stops as soon as you let go. Flipping only switches on once the wheels are clearly off the ground (12 px), so bumps in the road never flip the bike. On a real jump, let go of PEDAL unless you want to flip.
+- **Slam:** hold both buttons in the air close to the ground and the bike dives down with its wheels along the slope. After a real jump that adds a short speed boost on landing. A slam can be used again 3 seconds after the last one.
 - **Land with your wheels parallel to the slope** for a *PERFECT LANDING*: a speed burst plus a few seconds of extra drive. Perfect landings in a row build a combo (×2, ×3 …) with ever bigger boosts.
 - **Good landings** give a small push and keep your combo. **Rough** and **sloppy** landings cost speed and reset the combo.
-- **Backflips, big air, perfect landings and wheelies** charge the boost meter.
+- **Flips, big air and perfect landings** charge the boost meter.
 - **Boost:** for 5 seconds a cyclist in a pink kit pushes the trailer and keeps the bike steady.
 - **Game over** when the rider's head touches the ground. The high score is saved on your device.
 
@@ -91,9 +93,11 @@ Everything is drawn in code on a low-resolution canvas and scaled up with crisp 
 
 - **Physics:** a rigid body with two spring-damper wheel contacts on a procedural height function, integrated at a fixed 240 Hz step. The trailer is a separate point that follows the hitch, rests on the ground, and is constrained to stay behind the bike. It has no physical effect on the bike.
 - **Terrain:** layered value noise per biome. It uses domain warping, so hills bunch up and spread out irregularly, plus kicker ramps. A gentle start zone and a capped difficulty ramp keep it fair, and a grip assist helps on steep climbs.
-- **Biomes:** Alps, Forest, Desert and Coast repeat in a loop. Each is 7,800 px long and ends in a 1,900 px transition zone with its own ground colours, sky and scenery: foothills, savanna, beach dunes and a lakeside meadow.
+- **Biomes:** every ride starts in **Aachen** (6,000 px, shorter than the other biomes and never repeated: cobblestones, rows of town houses, Printen stalls, the Elisenbrunnen at the start, and the Dom, Rathaus and SuperC on the skyline), then crosses Eifel-like hills into the forest. From there Forest, Desert, Coast and Alps repeat in a loop. Each is 7,800 px long and ends in a 1,900 px transition zone: foothills, savanna, beach dunes and a lakeside meadow.
+- **Climate values:** underneath the biomes, the world is described by a few values that drift smoothly along the track: how mountainous, moist, hot, close to the sea and urban it is. Ground colours, snow, ground details and scenery are computed from these values, so regions blend without seams and small sub-regions (a drier patch, a higher ridge) appear inside a biome. See `WORLD_GENERATION.md`.
 - **Backgrounds:** three parallax layers. Mountains use ridged multifractal noise, the canyon uses terraced profiles with irregular rock layers, and the forest uses rows of tree crowns. In transitions each biome's scenery shrinks away while the next one rises, and a shared base colour blends underneath. Headlands and a diagonal shoreline frame the sea.
-- **Scenery:** placed by deterministic rules. Buildings and animals go only on flat ground, nothing goes on ramps, objects don't overlap, and a density field creates groves and clearings. Sprites are randomly mirrored.
+- **Scenery:** every object has a *niche*, a range of climate values it likes, so species thin out one by one between regions. Placement is deterministic: buildings and animals go only on flat ground, nothing goes on ramps, objects don't overlap, and a density field creates groves and clearings. Sprites are randomly mirrored and trees vary in size.
+- **Atmospheric haze:** distant background layers fade towards the horizon colour of the sky.
 - **Landmarks:**
   - The Matterhorn (once, in the first Alps stretch).
   - An alpine lake with paragliders.
@@ -102,6 +106,21 @@ Everything is drawn in code on a low-resolution canvas and scaled up with crisp 
   - A steamship and sailboats at the coast.
 - **Sky:** a Bayer-dithered gradient, which gives a 16-bit look without banding.
 - **Audio:** sound effects and a 124 BPM 16-bit house track (Am–F–C–G), synthesised live with the Web Audio API.
+
+---
+
+### Testing locally
+
+Run `python3 -m http.server 8000` in the project folder and open `http://localhost:8000`. Developer switches can be added to the URL:
+
+| Switch | Effect |
+|---|---|
+| `?debug` | Shows the climate overlay: the curves 8,000 px behind and ahead of the bike, the values at the bike, and the frame time. **G** toggles it, **[** and **]** jump 3,900 px back or forward. |
+| `&x=15000` | Starts a run at that world position (combine with `?debug` or use `?x=…` alone). |
+| `&seed=7` | Uses a fixed world instead of a random one. |
+| `&still` | Turns the physics off, for screenshots. |
+
+Example: `http://localhost:8000/?debug&seed=7&x=12850` shows the savanna (Aachen is 0–6,000, then each biome is 7,800 px).
 
 ---
 
