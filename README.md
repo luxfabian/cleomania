@@ -27,8 +27,27 @@ Start in **Aachen** and ride a road bike with a kid trailer through a **forest**
 - **Land with your wheels parallel to the slope** for a *PERFECT LANDING*: a speed burst plus a few seconds of extra drive. Perfect landings in a row build a combo (×2, ×3 …) with ever bigger boosts.
 - **Good landings** give a small push and keep your combo. **Rough** and **sloppy** landings cost speed and reset the combo.
 - **Flips, big air and perfect landings** charge the boost meter.
-- **Boost:** for 5 seconds a cyclist in a pink kit pushes the trailer and keeps the bike steady.
+- **Boost:** for 5 seconds a teammate in a black, colourfully flecked kit pushes the trailer and keeps the bike steady.
 - **Game over** when the rider's head touches the ground. The high score is saved on your device.
+
+### Levels
+
+Every ride is a level with two to four goals that all have to be reached in that one ride. A card at the start lists them. A checklist on the left then shows your progress for a few seconds and pops up again briefly whenever a goal moves on. Pause the game (**II** or P) to see all goals, your progress and your hearts. Reach them all, land, and the rider sits up and celebrates — the next level is unlocked (saved on your device). Then choose **KEEP RIDING** (left half of the screen, or R) to carry on with the same ride, or **NEXT LEVEL** (right half, or Space). A crash before the goals are done costs one of your **3 hearts** (shown next to the boost bar) and you retry the level. Hearts carry over from level to level; lose the last one and it's back to level 1 with 3 fresh hearts. Crashing after a completed level, or in free ride, costs nothing.
+
+| Level | Goals |
+|---|---|
+| 1 | Ride 250 m · 1 backflip |
+| 2 | Ride 400 m · 1 frontflip · 2 perfect landings |
+| 3 | Ride 550 m · 3 backflips · 1 slam |
+| 4 | Ride 700 m · perfect combo ×3 · big air 1.2 s |
+| 5 | Ride 900 m · 2 backflips · 2 frontflips · use the boost once |
+| 6 | Ride 1100 m · 3 slams · reach 90 km/h |
+| 7 | Ride 1300 m · perfect combo ×4 · big air 1.4 s · 3 frontflips |
+| 8 | Ride 1600 m · 5 backflips · 5 frontflips · boost twice |
+| 9 | Ride 1900 m · perfect combo ×5 · reach 110 km/h · big air 1.6 s |
+| 10 | Ride 2400 m · a double flip in one jump · perfect combo ×6 · 4 slams |
+
+After level 10, **free ride** (no goals) unlocks. On the title screen, pick any unlocked level with ← / → or by tapping the left or right edge of the screen.
 
 Tip: hold the phone sideways (landscape) for the best view.
 
@@ -119,6 +138,7 @@ Run `python3 -m http.server 8000` in the project folder and open `http://localho
 | `&x=15000` | Starts a run at that world position (combine with `?debug` or use `?x=…` alone). |
 | `&seed=7` | Uses a fixed world instead of a random one. |
 | `&still` | Turns the physics off, for screenshots. |
+| `&level=5` | Starts at that level (and unlocks it for this session). |
 
 Example: `http://localhost:8000/?debug&seed=7&x=12850` shows the savanna (Aachen is 0–6,000, then each biome is 7,800 px).
 
