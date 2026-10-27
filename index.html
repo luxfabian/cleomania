@@ -164,7 +164,7 @@ function rampF(x,s,prob){
 function hb(b,x){
   const s=SEED;x=x+140*noise(x/1700,s+7); // domain warp: hills bunch up and spread out
   if(b===ALPS)return 50*noise(x/270,s+11)+14*noise(x/90,s+12)+90*noise(x/1150,s+13)+2*noise(x/25,s+14);
-  if(b===FOREST)return 30*noise(x/200,s+41)+12*noise(x/70,s+42)+55*noise(x/900,s+43)+2.5*noise(x/16,s+44);
+  if(b===FOREST)return 26*noise(x/230,s+41)+7*noise(x/85,s+42)+55*noise(x/900,s+43)+1*noise(x/22,s+44); // rolling, not bumpy
   if(b===DESERT)return 32*noise(x/210,s+21)+11*noise(x/66,s+22)+45*noise(x/950,s+23);
   if(b===AACHEN)return 22*noise(x/260,s+51)+8*noise(x/80,s+52)+30*noise(x/1000,s+53); // gentle city hills
   return 19*noise(x/240,s+31)+6*noise(x/75,s+32)+28*noise(x/1000,s+33);
@@ -945,23 +945,27 @@ function outlined(s,x,y,size,col,shadow){
 // ================= background =================
 const bwt=(cA,cB,cT,b)=>(cA===b?1-cT:0)+(cB===b?cT:0);
 const BAYER=[0,8,2,10,12,4,14,6,3,11,1,9,15,7,13,5].map(v=>(v+0.5)/16);
-let skyCache={key:'',pat:null},hazeC=[200,220,240];
-function skyPattern(st,sb){
-  const key=st.map(v=>v|0).join()+'|'+sb.map(v=>v|0).join()+'|'+H;
-  if(skyCache.key===key)return skyCache.pat;
-  const N=12,c=document.createElement('canvas');c.width=4;c.height=H;
-  const x=c.getContext('2d'),img=x.createImageData(4,H),cols=[];
-  for(let k=0;k<N;k++)cols.push(mix(st,sb,k/(N-1)));
-  for(let y=0;y<H;y++)for(let i=0;i<4;i++){
-    const l=Math.min(N-1,Math.floor((y/Math.max(1,H-1))*(N-1)+BAYER[(y%4)*4+i]));
-    const o=(y*4+i)*4,cc=cols[l];img.data[o]=cc[0];img.data[o+1]=cc[1];img.data[o+2]=cc[2];img.data[o+3]=255;
+let skyCache={key:'',c:null,img:null},hazeC=[200,220,240];
+// one reusable canvas, repainted only when the colours change: biome transitions used to create
+// hundreds of throwaway canvases, which iOS Safari frees too slowly (memory pressure -> page reload)
+function skyImage(st,sb){
+  const key=st.map(v=>v|0).join()+'|'+sb.map(v=>v|0).join()+'|'+W+'x'+H;
+  if(skyCache.key===key)return skyCache.c;
+  if(!skyCache.c)skyCache.c=document.createElement('canvas');
+  const c=skyCache.c,x=c.getContext('2d');
+  if(c.width!==W||c.height!==H||!skyCache.img){c.width=W;c.height=H;skyCache.img=x.createImageData(W,H);}
+  const img=skyCache.img,px=new Uint32Array(img.data.buffer),N=12,cols=[],q=[0,0,0,0];
+  for(let k=0;k<N;k++){const cc=mix(st,sb,k/(N-1));cols.push(0xff000000|Math.round(cc[2])<<16|Math.round(cc[1])<<8|Math.round(cc[0]));}
+  for(let y=0;y<H;y++){
+    const f=(y/Math.max(1,H-1))*(N-1),o=y*W;
+    for(let i=0;i<4;i++)q[i]=cols[Math.min(N-1,Math.floor(f+BAYER[(y%4)*4+i]))];
+    for(let i=0;i<W;i++)px[o+i]=q[i&3];
   }
-  x.putImageData(img,0,0);
-  skyCache={key,pat:ctx.createPattern(c,'repeat')};return skyCache.pat;
+  x.putImageData(img,0,0);skyCache.key=key;return c;
 }
 function drawSky(cA,cB,cT){
   const st=cT>0?gpal(cA,cB,cT,'skyT'):BIO[cA].skyT,sb=cT>0?gpal(cA,cB,cT,'skyB'):BIO[cA].skyB;hazeC=sb;
-  ctx.fillStyle=skyPattern(st,sb);ctx.fillRect(0,0,W,H);
+  ctx.drawImage(skyImage(st,sb),0,0);
   const dw=bwt(cA,cB,cT,DESERT);
   const sr=Math.round(8+7*dw),sx=Math.round(W*0.78),sy=Math.round(H*0.17);
   ctx.globalAlpha=0.25;ctx.fillStyle='#fffbe0';
