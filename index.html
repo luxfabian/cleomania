@@ -420,20 +420,21 @@ function phys(dt){
   airOK=!any&&(airOK||clr>AIR_H);
   // flip speed ramps up gently with the time the button has been held in the air (from 0 to full in FLIP_RAMP s);
   // releasing, switching direction or landing starts the ramp again
-  const dir=!any&&airOK&&gas!==brk?(gas?-1:1):0;
+  const fb=live&&input.brake; // the automatic celebration brake never flips the bike
+  const dir=!any&&airOK&&gas!==fb?(gas?-1:1):0;
   if(dir!==flipDir){flipDir=dir;flipT=0;}else if(dir)flipT+=dt;
-  if(!any&&!airOK&&gas!==brk){} // too close to the ground: a single button doesn't turn the bike
+  if(!any&&!airOK&&gas!==fb){} // too close to the ground: a single button doesn't turn the bike
   else if(!any){
     // in the air: PEDAL turns the bike clockwise (frontflip), BRAKE counter-clockwise (backflip), at a steady rate;
     // releasing stops the rotation at once. Both near the ground: slam down, nose along the slope.
-    if(!(gas&&brk))slam=false;
-    if(gas&&brk&&clr<SLAM_H&&(slam||slamCD<=0)){ // after a slam, the next one is blocked for SLAM_CD seconds
+    if(!(gas&&fb))slam=false;
+    if(gas&&fb&&clr<SLAM_H&&(slam||slamCD<=0)){ // after a slam, the next one is blocked for SLAM_CD seconds
       if(!slam)slamCD=SLAM_CD;
       slam=true;b.vy=Math.min(b.vy,-SLAM_V);al=0;relT=0;
       let d=b.a-Math.atan(slope(b.x+Math.max(0,b.vx)*0.05));d=((d+Math.PI)%TAU+TAU)%TAU-Math.PI;
       b.w=clamp(-d*14,-FLIP_W,FLIP_W);
     }
-    else if(gas!==brk){b.w=flipDir*FLIP_W*sstep(0,FLIP_RAMP,flipT);al=0;relT=0;}
+    else if(gas!==fb){b.w=flipDir*FLIP_W*sstep(0,FLIP_RAMP,flipT);al=0;relT=0;}
     else if(boostOn>0){ // still held by the pusher: stays level
       let d=b.a-Math.atan2(clamp(b.vy,-0.6*b.vx,0.6*b.vx),Math.max(1,b.vx));d=((d+Math.PI)%TAU+TAU)%TAU-Math.PI;
       al+=-d*16-b.w*5;
@@ -594,7 +595,8 @@ function crash(){
   bGas.classList.remove('on');bBrake.classList.remove('on');
   try{navigator.vibrate&&navigator.vibrate(120);}catch(e){}
 }
-function keepRiding(){ // after a completed level: carry on with the same ride
+function keepRiding(){ // after a completed level: carry on with the same ride, upright and standing still
+  place(bike.x);
   state='play';winT=0;document.body.classList.add('play');
 }
 function levelWon(){ // brake to a stop, arms up, confetti; the next level unlocks
