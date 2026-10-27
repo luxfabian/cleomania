@@ -22,7 +22,7 @@ Start in **Aachen** and ride a road bike with a kid trailer through a **forest**
 | Sound on/off | **SND** | M |
 | Music on/off | **MUS** | — |
 
-- **In the air, PEDAL turns the bike clockwise (frontflip) and BRAKE turns it counter-clockwise (backflip)**, while held. The rotation starts gently and speeds up over half a second to full speed, so small corrections are easy; a full flip takes about one second. It stops as soon as you let go. Flipping only switches on once the wheels are off the ground by 6 px, so bumps in the road don't flip the bike. On a real jump, let go of PEDAL unless you want to flip.
+- **In the air, PEDAL turns the bike clockwise (frontflip) and BRAKE turns it counter-clockwise (backflip)**, while held. The rotation starts gently and speeds up over 0.3 seconds to full speed, so small corrections are easy; a full flip takes about 0.9 seconds. It stops as soon as you let go. Flipping only switches on once the wheels are off the ground by 6 px, so bumps in the road don't flip the bike. On a real jump, let go of PEDAL unless you want to flip.
 - **Slam:** hold both buttons in the air close to the ground and the bike dives down with its wheels along the slope. After a real jump that adds a short speed boost on landing. A slam can be used again 3 seconds after the last one.
 - **Land with your wheels parallel to the slope** for a *PERFECT LANDING*: a speed burst plus a few seconds of extra drive. Perfect landings in a row build a combo (×2, ×3 …) with ever bigger boosts.
 - **Good landings** give a small push and keep your combo. **Rough** and **sloppy** landings cost speed and reset the combo.
