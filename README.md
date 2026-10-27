@@ -22,7 +22,7 @@ Start in **Aachen** and ride a road bike with a kid trailer through a **forest**
 | Sound on/off | **SND** | M |
 | Music on/off | **MUS** | — |
 
-- **In the air, PEDAL turns the bike clockwise (frontflip) and BRAKE turns it counter-clockwise (backflip)**, at a steady rate while held. The rotation stops as soon as you let go. Flipping only switches on once the wheels are clearly off the ground (12 px), so bumps in the road never flip the bike. On a real jump, let go of PEDAL unless you want to flip.
+- **In the air, PEDAL turns the bike clockwise (frontflip) and BRAKE turns it counter-clockwise (backflip)**, while held. The rotation starts very gently and speeds up over one second to full speed, so small corrections are easy; a full flip takes about 1.3 seconds. It stops as soon as you let go. Flipping only switches on once the wheels are off the ground by 6 px, so bumps in the road don't flip the bike. On a real jump, let go of PEDAL unless you want to flip.
 - **Slam:** hold both buttons in the air close to the ground and the bike dives down with its wheels along the slope. After a real jump that adds a short speed boost on landing. A slam can be used again 3 seconds after the last one.
 - **Land with your wheels parallel to the slope** for a *PERFECT LANDING*: a speed burst plus a few seconds of extra drive. Perfect landings in a row build a combo (×2, ×3 …) with ever bigger boosts.
 - **Good landings** give a small push and keep your combo. **Rough** and **sloppy** landings cost speed and reset the combo.
@@ -105,7 +105,7 @@ Everything is drawn in code on a low-resolution canvas and scaled up with crisp 
   - Sandstone arches and hot-air balloons over the canyon.
   - A steamship and sailboats at the coast.
 - **Sky:** a Bayer-dithered gradient, which gives a 16-bit look without banding.
-- **Audio:** sound effects and a 124 BPM 16-bit house track (Am–F–C–G), synthesised live with the Web Audio API.
+- **Audio:** sound effects and six 16-bit French-house tracks (110–124 BPM: filtered chord stabs, sidechain pumping, funky bass), synthesised live with the Web Audio API. Whenever you enter a new biome, the track fades out over 3 seconds and the next one fades in from its intro over 5 seconds. Each new ride starts with the next track.
 
 ---
 
@@ -155,7 +155,7 @@ Roughly in order of impact:
 
 ### Feel and juice
 - Landing squash on the suspension, a dust trail scaled with speed, a camera kick on perfect landings, and haptics on Android (`navigator.vibrate`).
-- Music that changes per biome (same groove, different lead instrument) and a short jingle for a new high score.
+- A short jingle for a new high score.
 
 ### World
 - **Weather and time of day:** snow flurries in the Alps, heat haze in the canyon, a sunset run at the coast.

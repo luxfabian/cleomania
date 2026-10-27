@@ -291,12 +291,12 @@ const KIND=new Map();
 
 // ================= constants & state =================
 const G=280,I=230,K=3200,CD=60,MU=1.6,FMAX=680,POWER=36000,DRAG=0.0018,ROLL=10,
-      FLIP_W=7,AIR_H=12,BRAKE=300,SLAM_H=45,SLAM_V=320,SLAM_CD=3,PMAX=2.5,BOOST_F=430,BOOST_T=5,ARM=18,TR_R=6,PXM=12,DT=1/240;
+      FLIP_W=8,FLIP_RAMP=1,AIR_H=6,BRAKE=300,SLAM_H=45,SLAM_V=320,SLAM_CD=3,PMAX=2.5,BOOST_F=430,BOOST_T=5,ARM=18,TR_R=6,PXM=12,DT=1/240;
 const HEAD=[[10.5,18],[13.6,15.2],[11.5,12.6]]; // only the head counts as a crash
 let state='title',time=0,acc=0,relT=0,combo=0,speedFx=0,momT=0,momF=0;
 let bike,wheels,tr,cam={x:0,y:0},lead=0,camOff=0.3,camXi=0,camYi=0;
 const input={gas:false,brake:false};
-let slam=false,slamCD=0,airOK=false,boost=0,boostOn=0,airT=0,airRot=0,wheelieT=0,trick=0,flips=0,maxX=60,crashT=0,overT=0,
+let slam=false,slamCD=0,airOK=false,flipT=0,flipDir=0,boost=0,boostOn=0,airT=0,airRot=0,wheelieT=0,trick=0,flips=0,maxX=60,crashT=0,overT=0,
     shake=0,crank=0,lastMile=0,flash=0,segShown=-99,newBest=false;
 let popups=[],parts=[],banner=null,pusher;
 let hi=0;try{hi=+localStorage.getItem('cleomania_hi')||0;}catch(e){}
@@ -320,7 +320,7 @@ function place(x){ // put the bike (standing still) at world x
   wheels=[{ox:-11,oy:-7,r:5.5,c:true,vt:0,om:0,spin:0},{ox:11,oy:-7,r:5.5,c:true,vt:0,om:0,spin:0}];
   tr={x:tx,y:terrainH(tx)+TR_R,px:tx,py:terrainH(tx)+TR_R,g:true,spin:0};
   cam.x=bike.x-W*0.3;cam.y=bike.y;lead=0;
-  airT=0;airRot=0;wheelieT=0;relT=0;slam=false;slamCD=0;airOK=false;momT=0;momF=0;speedFx=0;shake=0;crank=0;parts=[];
+  airT=0;airRot=0;wheelieT=0;relT=0;slam=false;slamCD=0;airOK=false;flipT=0;flipDir=0;momT=0;momF=0;speedFx=0;shake=0;crank=0;parts=[];
   maxX=Math.max(maxX,x);lastMile=Math.floor((maxX-60)/PXM/100);
 }
 
@@ -372,6 +372,10 @@ function phys(dt){
   // pedal and brake only start flipping once the wheels have cleared the ground by AIR_H, so bumps never flip the bike;
   // once cleared, flipping stays possible until the landing
   airOK=!any&&(airOK||clr>AIR_H);
+  // flip speed ramps up gently with the time the button has been held in the air (from 0 to full in FLIP_RAMP s);
+  // releasing, switching direction or landing starts the ramp again
+  const dir=!any&&airOK&&gas!==brk?(gas?-1:1):0;
+  if(dir!==flipDir){flipDir=dir;flipT=0;}else if(dir)flipT+=dt;
   if(!any&&!airOK&&gas!==brk){} // too close to the ground: a single button doesn't turn the bike
   else if(!any){
     // in the air: PEDAL turns the bike clockwise (frontflip), BRAKE counter-clockwise (backflip), at a steady rate;
@@ -383,7 +387,7 @@ function phys(dt){
       let d=b.a-Math.atan(slope(b.x+Math.max(0,b.vx)*0.05));d=((d+Math.PI)%TAU+TAU)%TAU-Math.PI;
       b.w=clamp(-d*14,-FLIP_W,FLIP_W);
     }
-    else if(gas!==brk){b.w=gas?-FLIP_W:FLIP_W;al=0;relT=0;}
+    else if(gas!==brk){b.w=flipDir*FLIP_W*sstep(0,FLIP_RAMP,flipT);al=0;relT=0;}
     else if(boostOn>0){ // still held by the pusher: stays level
       let d=b.a-Math.atan2(clamp(b.vy,-0.6*b.vx,0.6*b.vx),Math.max(1,b.vx));d=((d+Math.PI)%TAU+TAU)%TAU-Math.PI;
       al+=-d*16-b.w*5;
@@ -602,11 +606,13 @@ function sfx(n){
 }
 
 
-// ================= music: 16-bit French house, 3 tracks (one per run) =================
+// ================= music: 16-bit French house, 6 tracks; at each new biome the track fades into the next =================
 let musicOn=true;try{musicOn=localStorage.getItem('cleomania_music')!=='0';}catch(e){}
-let mBus=null,pBus=null,noiseBuf=null,mTimer=null,mNext=0,mStep=0,trk=0,S16=0;
+let mBus=null,pBus=null,noiseBuf=null,mTimer=null,mNext=0,mStep=0,trk=0,S16=0,mSwitchAt=0;
+const MUSIC_VOL=0.5,FADE_OUT=3,FADE_IN=5;
+let mFade={a:MUSIC_VOL,b:MUSIC_VOL,t0:0,t1:0}; // our own copy of the volume ramp (AudioParam.value isn't reliable mid-ramp)
 const mf=m=>440*Math.pow(2,(m-69)/12);
-// prog: bass root + chord voicing per bar; bass: [step,interval,len]
+// prog: bass root + chord voicing per bar; bass: [step,interval,len]; stabs: steps with chords; arp: arpeggio; hat16: 16th hats (default on)
 const TRACKS=[
  {bpm:123,cut:[450,3800],pump:0.15,  // "One More Time" vibe: Dm7 - G7 - Cmaj7 - Am7
   prog:[{r:38,c:[62,65,69,72]},{r:43,c:[62,65,67,71]},{r:36,c:[60,64,67,71]},{r:45,c:[60,64,67,69]}],
@@ -620,11 +626,23 @@ const TRACKS=[
   prog:[{r:46,c:[62,65,69,70]},{r:45,c:[60,64,67,69]},{r:43,c:[58,62,65,67]},{r:36,c:[58,60,64,67]}],
   bass:[[0,0,2],[2,12,1],[4,0,1],[6,7,1],[8,0,2],[10,12,1],[12,10,1],[14,7,2]],
   stabs:[2,6,10,14]},
+ {bpm:121,cut:[400,2600],pump:0.25,   // "Around the World" vibe: one busy bass riff over Em7 - Em7 - Am7 - Bm7
+  prog:[{r:40,c:[59,62,64,67]},{r:40,c:[59,62,64,67]},{r:45,c:[60,64,67,69]},{r:47,c:[59,62,66,69]}],
+  bass:[[0,0,1],[2,12,1],[3,0,1],[4,7,1],[6,12,1],[7,10,1],[8,0,1],[10,12,1],[11,0,1],[12,3,1],[13,5,1],[14,7,1],[15,10,1]],
+  stabs:[6,14]},
+ {bpm:124,cut:[600,3400],pump:0.2,    // "Harder, Better, Faster" vibe: choppy chords, octave bass, Fm7 - Fm7 - Dbmaj7 - Eb
+  prog:[{r:41,c:[60,63,65,68]},{r:41,c:[60,63,65,68]},{r:37,c:[60,61,65,68]},{r:39,c:[58,63,67,70]}],
+  bass:[[0,0,1],[2,12,1],[4,0,1],[6,12,1],[8,0,1],[10,12,1],[12,0,1],[14,12,1]],
+  stabs:[2,3,6,10,11,14]},
+ {bpm:110,cut:[500,3000],pump:0.35,arp:true,hat16:false, // "Veridis Quo" vibe: mellow, Am9 - G6 - Fmaj7 - E7
+  prog:[{r:45,c:[60,64,69,71]},{r:43,c:[59,62,67,69]},{r:41,c:[60,64,65,69]},{r:40,c:[59,62,64,68]}],
+  bass:[[0,0,3],[4,12,1],[6,0,2],[8,7,2],[10,0,1],[12,12,2],[14,7,2]],
+  stabs:[2,6,10,14]},
 ];
 function musicInit(){
   if(mBus||!actx)return;
   const comp=actx.createDynamicsCompressor();comp.threshold.value=-14;comp.ratio.value=4;
-  mBus=actx.createGain();mBus.gain.value=0.5;mBus.connect(comp);comp.connect(actx.destination);
+  mBus=actx.createGain();mBus.gain.value=MUSIC_VOL;mBus.connect(comp);mSwitchAt=0;mFade={a:MUSIC_VOL,b:MUSIC_VOL,t0:0,t1:0};comp.connect(actx.destination);
   pBus=actx.createGain();pBus.connect(mBus);                     // sidechain-pumped bus for chords
   noiseBuf=actx.createBuffer(1,Math.floor(actx.sampleRate*0.5),actx.sampleRate);
   const d=noiseBuf.getChannelData(0);for(let i=0;i<d.length;i++)d[i]=Math.random()*2-1;
@@ -655,7 +673,7 @@ function mPlayStep(s,t){
   const sweep=0.5-0.5*Math.cos(2*Math.PI*(cyc*16+st)/256),cut=T.cut[0]+T.cut[1]*sweep;  // filter opens over 8 bars, closes over 8
   if(st%4===0)mKick(t);                                              // four on the floor
   if(st%4===2)mNoise(t,0.08,0.13,'highpass',7000);                   // offbeat open hat
-  else if(!intro&&st%2===1)mNoise(t,0.025,0.05,'highpass',9000);     // 16th hats
+  else if(!intro&&T.hat16!==false&&st%2===1)mNoise(t,0.025,0.05,'highpass',9000); // 16th hats
   if(!intro&&(st===4||st===12))mNoise(t,0.13,0.3,'bandpass',1500);   // clap
   if(T.stabs.includes(st))for(const n of ch.c){                      // filtered disco chords, detuned pair
     mNote(t,n,0.16,'sawtooth',0.03,cut,{bus:pBus,det:-9,q:4});
@@ -666,10 +684,29 @@ function mPlayStep(s,t){
   if(cyc===7&&st>=8)mNoise(t,0.06,0.06+0.03*(st-8),'bandpass',1800+200*(st-8)); // snare roll
   if(cyc===15)mNoise(t,S16*1.1,0.02+0.008*st,'highpass',2000+500*st);           // riser into the drop
 }
-function musicSched(){if(!actx)return;while(mNext<actx.currentTime+0.15){mPlayStep(mStep,mNext);mNext+=S16;mStep++;}}
+function musicFade(v,d,now){ // fades never overlap, so each one is simply appended after the last
+  const f=mFade,cur=now>=f.t1?f.b:f.a+(f.b-f.a)*Math.max(0,now-f.t0)/(f.t1-f.t0);
+  mBus.gain.setValueAtTime(cur,now);mBus.gain.linearRampToValueAtTime(v,now+d);mFade={a:cur,b:v,t0:now,t1:now+d};
+}
+function musicSched(now=actx&&actx.currentTime){
+  if(!actx)return;
+  if(mNext<now){const miss=Math.ceil((now-mNext)/S16);mStep+=miss;mNext+=miss*S16;} // after a stall, skip instead of a burst of notes
+  if(mSwitchAt&&now>=mSwitchAt){ // the fade-out is done: start the next track from its intro
+    mSwitchAt=0;trk=(trk+1)%TRACKS.length;mStep=0;S16=60/TRACKS[trk].bpm/4;mNext=now+0.05;musicFade(MUSIC_VOL,FADE_IN,now);
+  }
+  while(mNext<now+0.15){mPlayStep(mStep,mNext);mNext+=S16;mStep++;}
+}
 function musicStart(){if(!actx||muted||!musicOn||mTimer)return;musicInit();S16=60/TRACKS[trk].bpm/4;mNext=actx.currentTime+0.08;mTimer=setInterval(musicSched,25);}
 function musicStop(){if(mTimer){clearInterval(mTimer);mTimer=null;}}
-function musicNext(){musicStop();if(mStep)trk=(trk+1)%TRACKS.length;mStep=0;musicStart();}
+function musicBiome(){ // a new biome: fade the current track out, the next one fades in afterwards
+  if(!mTimer||!actx){if(mStep){trk=(trk+1)%TRACKS.length;mStep=0;}return;} // not playing: just move on
+  if(!mSwitchAt){const now=actx.currentTime;mSwitchAt=now+FADE_OUT;musicFade(0,FADE_OUT,now);}
+}
+function musicNext(){ // a new ride starts the next track at full volume
+  musicStop();if(mStep)trk=(trk+1)%TRACKS.length;mStep=0;mSwitchAt=0;
+  if(mBus&&actx){mBus.gain.cancelScheduledValues(0);mBus.gain.value=MUSIC_VOL;mFade={a:MUSIC_VOL,b:MUSIC_VOL,t0:0,t1:0};}
+  musicStart();
+}
 
 // ================= input =================
 const $=id=>document.getElementById(id);
@@ -762,7 +799,7 @@ function update(dt){
     if(m>lastMile){lastMile=m;flash=0.9;sfx('mile');}
     if(boostOn>0){boostOn-=dt;boost=Math.max(0,boostOn/BOOST_T);if(boostOn<=0)endBoost();}
     const seg=segOf(bike.x+BBL/2);
-    if(seg!==segShown){segShown=seg;banner={text:segName(seg),t:0};}
+    if(seg!==segShown){segShown=seg;banner={text:segName(seg),t:0};musicBiome();}
     if(wheels[0].c&&input.gas&&wheels[0].vt>40&&Math.random()<0.45){
       const h=rearAxle();climate(h[0]);groundPal();dust(h[0],h[1]-5,gEdge,1,40);
     }
