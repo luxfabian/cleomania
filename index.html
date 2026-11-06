@@ -344,6 +344,15 @@ let levelDone=false,goalsT=0,goalSig=''; // checklist: shown for goalsT seconds 
 const HEARTS=3;let hearts=HEARTS,heartLost=false,outOfHearts=false;
 try{hearts=Math.min(HEARTS,Math.max(1,+localStorage.getItem('cleomania_hearts')||HEARTS));}catch(e){}
 function saveProgress(){try{localStorage.setItem('cleomania_level',unlocked);localStorage.setItem('cleomania_hearts',hearts);}catch(e){}} // checklist: shown for goalsT seconds, or always when pinned
+// the two riders: whoever isn't on the bike runs behind and pushes the trailer during a boost
+// sh: shorts, sk: skin, shoe, j: jersey, arm: forearm (arm warmers or bare); the F variants are the far, shaded side
+const LOOK={
+ man:  {shF:'#6f7a61',sh:'#8b977c',skF:'#c99a66',sk:'#e2b48a',shoeF:'#7d8288',shoe:'#9aa0a6',jF:'#5e1a26',j:'#7d2232',armF:'#b9bec5',arm:'#dfe3e8'},
+ woman:{shF:'#0f0f0f',sh:'#111111',skF:'#d9a77b',sk:'#f3c99a',shoeF:'#3b3b40',shoe:'#3b3b40',jF:'#111114',j:'#1c1c22',armF:'#d9a77b',arm:'#f3c99a'},
+};
+let rider='man';try{if(localStorage.getItem('cleomania_rider')==='woman')rider='woman';}catch(e){}
+function setRider(r){rider=r;try{localStorage.setItem('cleomania_rider',r);}catch(e){}}
+const pusherWho=()=>rider==='man'?'woman':'man';
 const goals=()=>LEVELS[level-1]||[];
 const goalDone=([k,n])=>GOAL[k][1]()>=n;
 const levelName=l=>l>=FREE?'FREE RIDE':'LEVEL '+l;
@@ -805,13 +814,15 @@ function begin(){
   segShown=segOf(bike.x+BBL/2);banner={text:(goals().length?levelName(level)+' - ':'')+segName(segShown),t:0};
 }
 function pickLevel(d){level=Math.min(unlocked,Math.max(1,level+d));}
-function tapScreen(fx){ // fx: where the tap was, 0..1 across the screen (title: the edges pick the level)
-  if(state==='title'){if(fx<0.22&&level>1)pickLevel(-1);else if(fx>0.78&&level<unlocked)pickLevel(1);else begin();}
+function tapScreen(fx,fy){ // fx, fy: where the tap was, 0..1 across/down the screen (title: the edges pick the level)
+  if(state==='title'){const ry=titleLayout().ry,x=fx*W;
+    if(fy!==undefined&&fy*H>ry-7&&fy*H<ry+15&&Math.abs(x-W/2)<92){setRider(x<W/2+20?'man':'woman');return;} // the rider row
+    if(fx<0.22&&level>1)pickLevel(-1);else if(fx>0.78&&level<unlocked)pickLevel(1);else begin();}
   else if(state==='over'&&overT>0.6){if(levelDone)level=Math.min(FREE,level+1);else if(outOfHearts)level=1;begin();}
   else if(state==='win'&&winT>3.2){if(fx<0.5)keepRiding();else{level=Math.min(FREE,level+1);begin();}}
   else if(state==='paused')togglePause();
 }
-cv.addEventListener('pointerdown',e=>{e.preventDefault();audio();tapScreen(e.clientX/innerWidth);});
+cv.addEventListener('pointerdown',e=>{e.preventDefault();audio();tapScreen(e.clientX/innerWidth,e.clientY/innerHeight);});
 addEventListener('contextmenu',e=>e.preventDefault());
 // iOS Safari ignores user-scalable=no and only partly honours touch-action, so pinch, double-tap
 // and long-press can still zoom. Cancelling every touch at its start stops all native gestures;
@@ -831,6 +842,8 @@ addEventListener('keydown',e=>{
   const k=e.key;audio();
   if(state==='title'&&(k==='ArrowLeft'||k==='ArrowRight'||k==='a'||k==='A'||k==='d'||k==='D')){
     pickLevel(k==='ArrowRight'||k==='d'||k==='D'?1:-1);e.preventDefault();return;}
+  if(state==='title'&&(k==='ArrowUp'||k==='ArrowDown'||k==='w'||k==='W'||k==='s'||k==='S')){
+    setRider(pusherWho());e.preventDefault();return;}
   if(k==='ArrowRight'||k==='d'||k==='D'){input.gas=true;e.preventDefault();}
   else if(k==='ArrowLeft'||k==='a'||k==='A'){input.brake=true;e.preventDefault();}
   else if(k===' '||k==='ArrowUp'||k==='w'||k==='W'||k==='Enter'){e.preventDefault();if(state==='play')activateBoost();else tapScreen();}
@@ -1461,16 +1474,30 @@ function drawBike(){
   ctx.save();ctx.translate(b.x-camXi,Hc-(b.y-camYi));ctx.rotate(-b.a);
   ctx.lineCap='round';ctx.lineJoin='round';
   const BX=-1,BY=-8,p1x=BX+3.4*Math.cos(crank),p1y=BY+3.4*Math.sin(crank),p2x=BX-3.4*Math.cos(crank),p2y=BY-3.4*Math.sin(crank);
-  leg(-4,8,p2x,p2y,'#6f7a61','#c99a66','#7d8288');
+  const L=LOOK[rider],man=rider==='man';
+  leg(-4,8,p2x,p2y,L.shF,L.skF,L.shoeF);
   wheel(-11,-7,wheels[0].spin,5.5);wheel(11,-7,wheels[1].spin,5.5);
-  // touring luggage: big black pannier with a roll bag on the rack, frame bag
+  // touring luggage. Man: big black pannier with a roll bag on the rack.
+  // Woman: red roll-top pannier with a grey sleeping pad strapped on the rack. Both: frame bag
   ctx.strokeStyle='#2a2b2e';ctx.lineWidth=0.8;seg(-15,0.6,-5,1.2);seg(-11,-7,-14.5,0.6);
-  ctx.fillStyle='#1d1e21';poly([[-15.6,0.4],[-5.6,0.9],[-6.2,-5.8],[-14.6,-6.2]]);ctx.fill();
-  ctx.fillStyle='#34363b';poly([[-15.6,0.4],[-5.6,0.9],[-5.7,-0.4],[-15.4,-0.8]]);ctx.fill();
-  ctx.fillStyle='#26282c';poly([[-14.4,0.8],[-6.4,1.2],[-6.6,3.4],[-14.2,3]]);ctx.fill();
+  if(man){
+    ctx.fillStyle='#1d1e21';poly([[-15.6,0.4],[-5.6,0.9],[-6.2,-5.8],[-14.6,-6.2]]);ctx.fill();
+    ctx.fillStyle='#34363b';poly([[-15.6,0.4],[-5.6,0.9],[-5.7,-0.4],[-15.4,-0.8]]);ctx.fill();
+    ctx.fillStyle='#26282c';poly([[-14.4,0.8],[-6.4,1.2],[-6.6,3.4],[-14.2,3]]);ctx.fill();
+  }else{
+    ctx.fillStyle='#c8202a';poly([[-15.6,0.2],[-5.6,0.7],[-6.2,-5.8],[-14.6,-6.2]]);ctx.fill();        // pannier
+    ctx.fillStyle='#e0414a';poly([[-15.5,-0.6],[-5.7,-0.1],[-5.75,-0.9],[-15.45,-1.4]]);ctx.fill();   // light seam below the roll
+    ctx.fillStyle='#9c141c';poly([[-15.7,1.4],[-5.5,1.9],[-5.6,0.7],[-15.6,0.2]]);ctx.fill();         // rolled-up top
+    ctx.strokeStyle='#18191c';ctx.lineWidth=0.8;seg(-10.4,1.7,-10.6,-2.4);                           // closure strap
+    ctx.fillStyle='#18191c';ctx.fillRect(-11.2,1.6,1.4,1.4);                                          // buckle
+    ctx.fillStyle='#eceff2';ctx.fillRect(-13.8,3.6,1.6,0.9);                                          // reflective logo
+    ctx.strokeStyle='#8d9299';ctx.lineWidth=3.4;seg(-13.6,3.6,-7.2,3.9);                              // sleeping pad
+    ctx.strokeStyle='#b4b9c0';ctx.lineWidth=0.8;seg(-13.4,4.8,-7.4,5.1);
+    ctx.strokeStyle='#5e636a';ctx.lineWidth=0.7;seg(-11.8,2,-11.8,5.6);seg(-8.8,2.1,-8.8,5.7);           // straps
+  }
   ctx.fillStyle='#1d1e21';poly([[-3.2,2.9],[7.2,2.3],[5.2,0.2],[-2.4,-1.2]]);ctx.fill();
-  // frame: petrol-blue gravel bike
-  ctx.strokeStyle='#2b6382';ctx.lineWidth=1.7;
+  // frame: petrol-blue gravel bike, or a black one when the woman rides
+  ctx.strokeStyle=man?'#2b6382':'#212226';ctx.lineWidth=1.7;
   seg(-11,-7,BX,BY);seg(-11,-7,-4,4);seg(BX,BY,-4,4);seg(-4,4,8,3);seg(BX,BY,9,-1);seg(8,3,9,-1);
   ctx.lineWidth=1.3;seg(9,-1,11,-7);
   ctx.strokeStyle='rgba(50,50,50,.75)';ctx.lineWidth=0.7;seg(BX,BY+1.8,-11,-5.8);
@@ -1482,31 +1509,43 @@ function drawBike(){
   ctx.strokeStyle='#222';ctx.lineWidth=1.2;seg(-4,4,-4.6,6.2);ctx.lineWidth=1.7;seg(-7.2,6.6,-2.6,6.4);
   ctx.lineWidth=1.2;seg(8,3,10.2,4);seg(10.2,4,11.6,2.6);seg(11.6,2.6,10.6,0.6);
   ctx.lineWidth=1;seg(9.5,5.2,14.5,5.6);
-  // rider: sage baggy shorts, maroon striped jersey, light arm warmers, beard, white road helmet
-  leg(-4,8,p1x,p1y,'#8b977c','#e2b48a','#9aa0a6');
+  // rider. Man: sage baggy shorts, maroon striped jersey, light arm warmers, beard.
+  // Woman: black kit with colourful flecks, blonde ponytail. Both: white road helmet, sunglasses
+  leg(-4,8,p1x,p1y,L.sh,L.sk,L.shoe);
   const cel=state==='win',wv=Math.sin(time*9);
   // celebrating: sit up, both arms up in a V and waving; otherwise hands on the drops
   const SX=cel?2.6:6.6,SY=cel?15.4:12.2,HX=cel?4.4:11,HY=cel?19.6:14.4,tx=SX+3.6,ty=SY-8.6,tl=Math.hypot(tx,ty);
-  if(cel){ctx.strokeStyle='#5e1a26';ctx.lineWidth=2;seg(SX-0.6,SY,0.2,19.6);ctx.strokeStyle='#b9bec5';ctx.lineWidth=1.6;seg(0.2,19.6,-1.4-wv*0.8,23.8); // far arm
-    ctx.fillStyle='#c99a66';circ(-1.5-wv*0.8,24.3,0.9);ctx.fill();}
-  ctx.strokeStyle='#7d2232';ctx.lineWidth=4.4;seg(-3.6,8.6,SX,SY);
-  ctx.strokeStyle='#f3dfe2';ctx.lineWidth=0.7;
-  for(const t of [0.3,0.52,0.74]){const x=-3.6+tx*t,y=8.6+ty*t,nx=-ty/tl*2,ny=tx/tl*2;seg(x-nx,y-ny,x+nx,y+ny);} // jersey stripes
-  ctx.fillStyle='#8b977c';circ(-4,8,2.4);ctx.fill();
+  if(cel){ctx.strokeStyle=L.jF;ctx.lineWidth=2;seg(SX-0.6,SY,0.2,19.6);ctx.strokeStyle=L.armF;ctx.lineWidth=1.6;seg(0.2,19.6,-1.4-wv*0.8,23.8); // far arm
+    ctx.fillStyle=L.skF;circ(-1.5-wv*0.8,24.3,0.9);ctx.fill();}
+  ctx.strokeStyle=L.j;ctx.lineWidth=4.4;seg(-3.6,8.6,SX,SY);
+  if(man){
+    ctx.strokeStyle='#f3dfe2';ctx.lineWidth=0.7;
+    for(const t of [0.3,0.52,0.74]){const x=-3.6+tx*t,y=8.6+ty*t,nx=-ty/tl*2,ny=tx/tl*2;seg(x-nx,y-ny,x+nx,y+ny);} // jersey stripes
+  }else for(const [t,o,c] of [[0.22,0.8,'#ff5c8a'],[0.4,-0.9,'#3fc1c9'],[0.58,0.6,'#ffd23f'],[0.76,-0.6,'#ff5c8a']]){ // jersey flecks
+    const x=-3.6+tx*t-ty/tl*o,y=8.6+ty*t+tx/tl*o;ctx.fillStyle=c;ctx.fillRect(Math.round(x)-0.5,Math.round(-y)-0.5,1,1);}
+  ctx.fillStyle=L.sh;circ(-4,8,2.4);ctx.fill();
   if(cel){ // near arm
     const hx=8.2+wv*1.1,hy=24;
-    ctx.strokeStyle='#7d2232';ctx.lineWidth=2.2;seg(SX+0.4,SY,5.6,19.4);
-    ctx.strokeStyle='#dfe3e8';ctx.lineWidth=1.7;seg(5.6,19.4,hx,hy-0.5);
-    ctx.fillStyle='#e2b48a';circ(hx,hy,0.95);ctx.fill();
+    ctx.strokeStyle=L.j;ctx.lineWidth=2.2;seg(SX+0.4,SY,5.6,19.4);
+    ctx.strokeStyle=L.arm;ctx.lineWidth=1.7;seg(5.6,19.4,hx,hy-0.5);
+    ctx.fillStyle=L.sk;circ(hx,hy,0.95);ctx.fill();
   }else{
-    ctx.strokeStyle='#7d2232';ctx.lineWidth=2.2;seg(7,12,8.4,7.2);
-    ctx.strokeStyle='#dfe3e8';ctx.lineWidth=1.7;seg(8.4,7.2,13.2,6.8);
-    ctx.fillStyle='#e2b48a';circ(13.6,6.8,0.9);ctx.fill();
+    ctx.strokeStyle=L.j;ctx.lineWidth=2.2;seg(7,12,8.4,7.2);
+    ctx.strokeStyle=L.arm;ctx.lineWidth=1.7;seg(8.4,7.2,13.2,6.8);
+    ctx.fillStyle=L.sk;circ(13.6,6.8,0.9);ctx.fill();
   }
-  ctx.strokeStyle='#e2b48a';ctx.lineWidth=2;seg(SX+0.9,SY+0.6,HX-1,HY-0.4);
+  ctx.strokeStyle=L.sk;ctx.lineWidth=2;seg(SX+0.9,SY+0.6,HX-1,HY-0.4);
   ctx.save();ctx.translate(HX-11,-(HY-14.4)); // head, drawn around (11,14.4)
-  ctx.fillStyle='#e2b48a';circ(11,14.4,2.4);ctx.fill();
-  ctx.fillStyle='#7a5634';ctx.beginPath();ctx.arc(11.2,-14.3,2.4,0.08*Math.PI,0.82*Math.PI);ctx.fill();  // beard
+  if(!man){ // blonde ponytail flying back, hair behind the face
+    const w=Math.sin(time*16);
+    ctx.strokeStyle='#ffd166';ctx.lineWidth=2.1;ctx.beginPath();
+    ctx.moveTo(8.9,-15.3);ctx.quadraticCurveTo(5.6,-16.6-w*0.7,2,-14.2-w*1.5);ctx.stroke();
+    ctx.strokeStyle='#e9b949';ctx.lineWidth=0.8;ctx.beginPath();
+    ctx.moveTo(8.7,-14.8);ctx.quadraticCurveTo(5.6,-15.9-w*0.7,2.6,-13.6-w*1.5);ctx.stroke();
+    ctx.fillStyle='#ffd166';circ(9.5,14.5,2.9);ctx.fill();
+  }
+  ctx.fillStyle=L.sk;circ(11,14.4,2.4);ctx.fill();
+  if(man){ctx.fillStyle='#7a5634';ctx.beginPath();ctx.arc(11.2,-14.3,2.4,0.08*Math.PI,0.82*Math.PI);ctx.fill();}  // beard
   ctx.fillStyle='#f8f9fa';ctx.beginPath();ctx.ellipse(10.7,-15.6,3.2,2.4,-0.1,Math.PI*0.97,Math.PI*2.02);ctx.fill(); // helmet
   ctx.strokeStyle='#b9c0c8';ctx.lineWidth=0.5;seg(9,17.1,10.4,17.4);seg(11.4,17.3,12.6,16.8);
   ctx.strokeStyle='#1b1d22';ctx.lineWidth=1.3;seg(11.6,14.9,13.7,14.7); // sunglasses
@@ -1556,32 +1595,39 @@ function warm(sx,sy,hx,hy,c1,c2){
   ctx.strokeStyle=c1;ctx.lineWidth=1.8;wseg(sx,sy,k[0],k[1]);
   ctx.strokeStyle=c2;ctx.lineWidth=1.4;wseg(k[0],k[1],k[2],k[3]);
 }
-function drawWoman(P,alpha){
+function drawPusher(P,alpha,who){ // whoever isn't riding, in the same kit as on the bike
+  const L=LOOK[who],man=who==='man';
   ctx.save();ctx.globalAlpha=alpha;ctx.lineCap='round';ctx.lineJoin='round';
   const [hx,hy]=P.hip,[sx,sy]=P.sh,[qx,qy]=P.head;
-  wleg(hx,hy,P.f2[0],P.f2[1],'#0f0f0f','#d9a77b','#3b3b40');
-  warm(sx,sy,P.h2[0],P.h2[1],'#111114','#d9a77b');
-  // blonde ponytail
-  const w=Math.sin(time*16);
-  ctx.strokeStyle='#ffd166';ctx.lineWidth=1.8;ctx.beginPath();
-  ctx.moveTo(WX(qx-1.8),WY(qy+0.8));ctx.quadraticCurveTo(WX(qx-4.5),WY(qy+1.8+w*0.6),WX(qx-7.5),WY(qy-0.2+w*1.3));ctx.stroke();
-  ctx.strokeStyle='#e9b949';ctx.lineWidth=0.7;ctx.beginPath();
-  ctx.moveTo(WX(qx-2),WY(qy+0.4));ctx.quadraticCurveTo(WX(qx-4.5),WY(qy+1.2+w*0.6),WX(qx-7),WY(qy-0.6+w*1.3));ctx.stroke();
-  // torso: black jersey with colourful flecks
-  ctx.strokeStyle='#1c1c22';ctx.lineWidth=3.6;wseg(hx,hy,sx,sy);
-  for(const [t,o,c] of [[0.25,0.6,'#ff5c8a'],[0.45,-0.7,'#3fc1c9'],[0.62,0.5,'#ffd23f'],[0.8,-0.4,'#ff5c8a']]){
+  wleg(hx,hy,P.f2[0],P.f2[1],L.shF,L.skF,L.shoeF);
+  warm(sx,sy,P.h2[0],P.h2[1],L.jF,L.armF);
+  if(!man){ // blonde ponytail
+    const w=Math.sin(time*16);
+    ctx.strokeStyle='#ffd166';ctx.lineWidth=1.8;ctx.beginPath();
+    ctx.moveTo(WX(qx-1.8),WY(qy+0.8));ctx.quadraticCurveTo(WX(qx-4.5),WY(qy+1.8+w*0.6),WX(qx-7.5),WY(qy-0.2+w*1.3));ctx.stroke();
+    ctx.strokeStyle='#e9b949';ctx.lineWidth=0.7;ctx.beginPath();
+    ctx.moveTo(WX(qx-2),WY(qy+0.4));ctx.quadraticCurveTo(WX(qx-4.5),WY(qy+1.2+w*0.6),WX(qx-7),WY(qy-0.6+w*1.3));ctx.stroke();
+  }
+  // torso: maroon jersey with light stripes, or black with colourful flecks
+  ctx.strokeStyle=L.j;ctx.lineWidth=3.6;wseg(hx,hy,sx,sy);
+  if(man){
+    const tx=sx-hx,ty=sy-hy,tl=Math.hypot(tx,ty)||1;
+    ctx.strokeStyle='#f3dfe2';ctx.lineWidth=0.6;
+    for(const t of [0.3,0.52,0.74]){const x=hx+tx*t,y=hy+ty*t,nx=-ty/tl*1.6,ny=tx/tl*1.6;wseg(x-nx,y-ny,x+nx,y+ny);}
+  }else for(const [t,o,c] of [[0.25,0.6,'#ff5c8a'],[0.45,-0.7,'#3fc1c9'],[0.62,0.5,'#ffd23f'],[0.8,-0.4,'#ff5c8a']]){
     ctx.fillStyle=c;ctx.fillRect(Math.round(WX(hx+(sx-hx)*t+o)),Math.round(WY(hy+(sy-hy)*t)),1,1);}
-  ctx.fillStyle='#111';wcirc(hx,hy,2);ctx.fill();
-  wleg(hx,hy,P.f1[0],P.f1[1],'#111','#f3c99a','#3b3b40');
+  ctx.fillStyle=L.sh;wcirc(hx,hy,2);ctx.fill();
+  wleg(hx,hy,P.f1[0],P.f1[1],L.sh,L.sk,L.shoe);
   // head
-  ctx.strokeStyle='#f3c99a';ctx.lineWidth=1.6;wseg(sx,sy,qx-0.3,qy-1);
-  ctx.fillStyle='#ffd166';wcirc(qx-0.8,qy+0.1,2.5);ctx.fill();
-  ctx.fillStyle='#f3c99a';wcirc(qx+0.5,qy-0.2,2);ctx.fill();
-  ctx.fillStyle='#ffd166';ctx.fillRect(Math.round(WX(qx-0.2)),Math.round(WY(qy+1.6)),2,1);
+  ctx.strokeStyle=L.sk;ctx.lineWidth=1.6;wseg(sx,sy,qx-0.3,qy-1);
+  if(!man){ctx.fillStyle='#ffd166';wcirc(qx-0.8,qy+0.1,2.5);ctx.fill();}
+  ctx.fillStyle=L.sk;wcirc(qx+0.5,qy-0.2,2);ctx.fill();
+  if(man){ctx.fillStyle='#7a5634';ctx.beginPath();ctx.arc(WX(qx+0.6),WY(qy-0.3),2,0.08*Math.PI,0.82*Math.PI);ctx.fill();} // beard
+  else{ctx.fillStyle='#ffd166';ctx.fillRect(Math.round(WX(qx-0.2)),Math.round(WY(qy+1.6)),2,1);}
   ctx.fillStyle='#ffffff';ctx.beginPath();ctx.arc(WX(qx),WY(qy+0.5),2.6,Math.PI,TAU);ctx.fill();
   ctx.fillStyle='#222';ctx.fillRect(Math.round(WX(qx-1)),Math.round(WY(qy+2.6)),2,1);
   ctx.strokeStyle='#111';ctx.lineWidth=1;wseg(qx+0.7,qy+0.1,qx+2.4,qy);
-  warm(sx,sy,P.h1[0],P.h1[1],'#1c1c22','#f3c99a');
+  warm(sx,sy,P.h1[0],P.h1[1],L.j,L.arm);
   ctx.restore();
 }
 function pushPose(hand,phase,grounded){
@@ -1688,9 +1734,10 @@ function panel(w,h){
   ctx.strokeStyle='#fff';ctx.lineWidth=1;ctx.strokeRect(x+0.5,y+0.5,w-1,h-1);
   return y;
 }
+function titleLayout(){const big=W>=330?24:16,ty=Math.round(H*0.1)+3;return {big,ty,ry:ty+big+32};} // ry: the rider row
 function drawTitle(){
   ctx.fillStyle='rgba(10,10,25,.25)';ctx.fillRect(0,0,W,H);
-  const big=W>=330?24:16,ty=Math.round(H*0.12)+4;
+  const {big,ty,ry}=titleLayout();
   outlined('CLEOMANIA',W/2,ty,big,'#ffd23f','#e63946');
   if(Math.floor(time*2)%2===0)txt(touch?'TAP TO RIDE':'PRESS SPACE TO RIDE',W/2,ty+big+10,'#ffffff',8,'center');
   const lines=touch?['PEDAL: RIDE / FRONTFLIP','BRAKE: STOP / BACKFLIP','BOTH NEAR GROUND: SLAM','TRICKS CHARGE THE BOOST',"DON'T LAND ON YOUR HEAD!"]
@@ -1699,10 +1746,15 @@ function drawTitle(){
   const pw=Math.min(W-12,26*8+16);
   ctx.fillStyle='rgba(15,10,30,.6)';ctx.fillRect(Math.round(W/2-pw/2),y0-6,pw,lines.length*11+10);
   lines.forEach((l,i)=>txt(l,W/2,y0+i*11,i===lines.length-1?'#ff9fd1':'#ffffff',8,'center'));
-  const lv=(level>1?'< ':'  ')+levelName(level)+(level<unlocked?' >':'  ');
-  txt(lv,W/2,ty+big+24,'#ffd23f',8,'center');
-  if(level<FREE)drawHearts(W/2-11,ty+big+35,1,-1);
-  if(H>W)txt('TIP: TURN PHONE SIDEWAYS',W/2,ty+big+46,'#8fe3ff',8,'center');
+  const lv=(level>1?'< ':'')+levelName(level)+(level<unlocked?' >':''),hw=level<FREE?HEARTS*8+6:0,lx=Math.round(W/2-(lv.length*8+hw)/2);
+  txt(lv,lx,ty+big+21,'#ffd23f',8,'left');
+  if(hw)drawHearts(lx+lv.length*8+6,ty+big+22,1,-1); // hearts next to the level
+  // rider choice: tap a name (keyboard: up/down)
+  const man=rider==='man',rx=Math.round(W/2-80);
+  txt('RIDER:',rx,ry,'#ffffff',8,'left');
+  txt(man?'[MAN]':' MAN ',rx+56,ry,man?'#ffd23f':'#9aa0b4',8,'left');
+  txt(man?' WOMAN ':'[WOMAN]',rx+104,ry,man?'#9aa0b4':'#ffd23f',8,'left');
+  if(H>W)txt('TIP: TURN PHONE SIDEWAYS',W/2,ry+14,'#8fe3ff',8,'center');
 }
 function drawOver(){
   const G=goals(),w=Math.min(W-16,232),dy=G.length?(heartLost?30:12):0,y=panel(w,118+dy);
@@ -1750,9 +1802,9 @@ function render(){
   drawTrailer();
   if(pusher.on){
     const hand={x:pusher.hand.x-(1-pusher.a)*22,y:pusher.hand.y};
-    drawWoman(pushPose(hand,pusher.phase,pusher.gT>0),pusher.a);
+    drawPusher(pushPose(hand,pusher.phase,pusher.gT>0),pusher.a,pusherWho());
   }
-  if(pusher.leave)drawWoman(wavePose(pusher.leave.x),clamp(1-(pusher.leave.t-0.8)/1,0,1));
+  if(pusher.leave)drawPusher(wavePose(pusher.leave.x),clamp(1-(pusher.leave.t-0.8)/1,0,1),pusherWho());
   drawBike();
   for(const p of parts){
     ctx.globalAlpha=clamp(1-p.l/p.m,0,1);ctx.fillStyle=p.c;
