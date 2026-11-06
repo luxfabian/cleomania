@@ -285,6 +285,15 @@ SPR.superc=paint(28,30,r=>{ // RWTH SuperC: glass block whose upper floors canti
   for(let y=4;y<30;y+=3)r(2,y,y<12?25:10,1,'#66788c');
   r(12,12,15,1,'#4a5768');r(0,29,28,1,'#66788c');
 });
+SPR.castle=paint(28,22,r=>{ // castle ruin for a forest hilltop: keep, broken curtain wall, round tower, ivy
+  const S='#948e80',D='#716b60',K='#3e3b36',V='#3f6e45';
+  r(4,4,8,18,S);r(10,4,2,18,D);r(4,2,2,2,S);r(7,2,2,2,S);r(10,2,2,2,D);r(6,1,1,1,S); // keep, its top broken off at the left
+  r(6,7,1,2,K);r(8,12,1,2,K);r(6,16,1,2,K);
+  r(12,12,4,10,S);r(16,14,3,8,S);r(19,11,3,11,S);r(13,11,2,1,S);r(20,10,1,1,S);  // curtain wall with gaps
+  r(15,17,2,5,K);                                                                   // gate
+  r(22,7,5,15,S);r(25,7,2,15,D);r(22,6,1,1,S);r(24,6,1,1,S);r(26,6,1,1,D);r(23,11,1,2,K); // round tower
+  r(4,15,2,5,V);r(5,13,1,3,V);r(12,18,3,4,V);r(19,16,2,6,V);r(22,17,1,5,V);r(0,20,28,2,'#4c8a56');
+});
 // placement categories
 const KIND=new Map();
 [SPR.chalet,SPR.hut,SPR.tower,SPR.fence,SPR.umbrella,SPR.arch,SPR.cabin,SPR.stall].forEach(s=>KIND.set(s,'build'));
@@ -1044,9 +1053,69 @@ function canopy(fx,s,cw,amp){ // row of rounded tree crowns
   const c=Math.floor(fx/cw),u=(fx-c*cw)/cw*2-1;
   return amp*(0.45+0.55*hash(c,s))*Math.sqrt(Math.max(0,1-u*u));
 }
+// ----- forest backgrounds: shapes whose character drifts along the track, plus rare sights -----
+const mac=(fx,wl,s)=>sstep(-0.5,0.5,noise(fx/wl,s)); // slow 0..1 field: changes how a layer looks from one stretch to the next
+let crU=0.5,crTone=0;                                   // set by crownsJ / fTrees: where in its crown a column is, which tone
+function crownsJ(fx,s,cw,amp){ // row of rounded crowns with random widths and spacing (no fixed rhythm)
+  const c0=Math.floor(fx/cw);let best=0;
+  for(let c=c0-1;c<=c0+1;c++){
+    const r=hash(c,s+1),w=cw*(0.35+0.75*r*r),cx=(c+0.5+(hash(c,s+2)-0.5)*0.7)*cw,u=(fx-cx)/w;if(u<=-1||u>=1)continue;
+    const h=amp*(0.45+0.55*hash(c,s))*Math.sqrt(1-u*u);if(h>best){best=h;crU=(u+1)/2;}
+  }
+  return best;
+}
+// the rare sights of one forest stretch (about a minute of riding): at most one big sight, often none,
+// and a crater lake in some stretches. Positions are world x, well away from the transitions.
+const fPlans=new Map();
+function fPlan(sg){
+  let p=fPlans.get(sg);if(p)return p;
+  const x0=AL+sg*BL+1000,span=BL-BBL-2000,r=hash(sg,SEED+1101);
+  const sight=r<0.1?'castle':r<0.2?'viaduct':r<0.3?'wind':null; // only 30% of the stretches show one
+  const sx=x0+hash(sg,SEED+1102)*span;
+  let lake=null;
+  if(sight!=='viaduct'&&hash(sg,SEED+1103)<0.2){const lx=x0+hash(sg,SEED+1104)*span;if(!sight||Math.abs(lx-sx)>1800)lake=lx;}
+  p={sight,sx,lake};fPlans.set(sg,p);return p;
+}
+function fPlanAt(wx){const sg=segOf(wx);return sg>=0&&(sg+LOOP0)%NB===FOREST?fPlan(sg):null;}
+function fHillBase(fx){ // mid-layer forest hills; their relief swells and fades along the track
+  const w=fx+40*noise(fx/420,SEED+1110),R=lerp(3,17,mac(fx,650,SEED+1111));
+  return Math.max(3,13+R*(0.65*noise(w/70,SEED+181)+0.35*noise(w/26,SEED+1112)));
+}
+const VIA_W=62; // half width of the viaduct valley (mid-layer px)
+function fHill(fx){
+  let h=fHillBase(fx);const p=fPlanAt(fx/0.35);if(!p)return h;
+  if(p.lake!==null){const dl=Math.abs(fx/0.35-p.lake)/330;h+=7*Math.exp(-Math.pow((dl-1.08)/0.14,2));} // the crater lake's rim
+  if(!p.sight)return h;
+  const d=Math.abs(fx-p.sx*0.35);
+  if(p.sight==='castle')h+=10*(1-sstep(0,1,d/30));                    // the castle's hilltop
+  else if(p.sight==='viaduct')h=lerp(h,3,1-sstep(0.6,1,d/VIA_W));      // a valley for the railway to cross
+  return h;
+}
+function fLakeK(fx){const p=fPlanAt(fx/0.35);if(!p||p.lake===null)return 0;const d=Math.abs(fx/0.35-p.lake)/330;return d<1?1-sstep(0.75,1,d):0;}
+function fTrees(fx){ // crowns of random width (mostly small), conifers or broadleaf by a slow field, groves and clearings
+  const p=fPlanAt(fx/0.35);let clear=0; // no trees on the castle's hilltop or in the viaduct's valley
+  if(p&&p.sight==='castle'||p&&p.sight==='viaduct')clear=p.sx*0.35;
+  const con=mac(fx,800,SEED+1113),c0=Math.floor(fx/6);let best=0;crTone=0;
+  for(let c=c0-2;c<=c0+2;c++){
+    const cx=c*6+3+(hash(c,SEED+1114)-0.5)*4;
+    if(clear&&Math.abs(cx-clear)<(p.sight==='castle'?16:VIA_W))continue;
+    const D=sstep(0.2,0.6,0.6*mac(cx,170,SEED+1115)+0.4*mac(cx,520,SEED+1116)); // groves and clearings
+    if(hash(c,SEED+182)>0.15+0.85*D)continue;
+    const r=hash(c,SEED+183),w=2+8*r*r,conif=hash(c,SEED+1117)<con,d=Math.abs(fx-cx)/w;if(d>=1)continue;
+    const ht=(conif?2.2:1.5)*w*(0.8+0.4*hash(c,SEED+1118))*(hash(c,SEED+1119)>0.985?1.5:1); // the odd giant
+    const h=conif?ht*(1-d):ht*Math.sqrt(1-d*d);
+    if(h>best){best=h;crTone=(conif?2:0)+(hash(c,SEED+1120)<0.5?1:0);}
+  }
+  return best;
+}
+const FTONE=[[52,108,62],[62,120,68],[34,82,55],[29,73,50]]; // broadleaf light/dark, conifer light/dark
+function farForest(fx){ // far-layer wooded ridges: sometimes a high ridge, sometimes low rolling woods
+  const A=lerp(4,15,mac(fx,240,SEED+1121)),w=fx+18*noise(fx/160,SEED+1122);
+  return 18+A*noise(w/55,SEED+163)+0.5*A*noise(w/21,SEED+166)+crownsJ(fx,SEED+1123,5,5*(0.6+0.8*mac(fx,120,SEED+1124)));
+}
 function backProf(b,fx,dh){
   if(b===ALPS){const w=fx+20*noise(fx/110,SEED+107),r=1-Math.abs(noise(w/75,SEED+105)),r2=1-Math.abs(noise(w/24,SEED+108));return 32+40*r*r+8*r2*r2*r+3*noise(fx/9,SEED+106);}
-  if(b===FOREST)return 34+16*noise(fx/80,SEED+161)+canopy(fx,SEED+162,7,4);
+  if(b===FOREST)return 32+lerp(8,20,mac(fx,150,SEED+1125))*noise(fx/80,SEED+161)+canopy(fx,SEED+162,7,4);
   if(b===AACHEN)return 26+8*noise(fx/70,SEED+191)+5*noise(fx/23,SEED+192); // Lousberg and Eifel hills
   if(b===DESERT){const c=Math.floor(fx/140),d=Math.abs(fx-(c*140+70))/14;return 24+2*noise(fx/30,SEED+171)+(hash(c,SEED+172)<0.4&&d<1?10*(d<0.6?1:1-(d-0.6)/0.4):0);} // distant plateau with buttes
   return dh; // coast: flat sea surface
@@ -1054,7 +1123,7 @@ function backProf(b,fx,dh){
 const BACKC=[[180,195,223],[134,174,156],[206,158,150],SEA,[150,172,168]];
 function farProf(b,fx){
   if(b===ALPS){const w=fx+22*noise(fx/90,SEED+103),r=1-Math.abs(noise(w/55,SEED+101)),r2=1-Math.abs(noise(w/19,SEED+104));return 24+42*r*r+10*r2*r2*r+3*noise(fx/7,SEED+102);}
-  if(b===FOREST)return 20+10*noise(fx/55,SEED+163)+5*noise(fx/21,SEED+166)+canopy(fx,SEED+164,5,5)+canopy(fx+2.5,SEED+165,9,3);
+  if(b===FOREST)return farForest(fx);
   if(b===AACHEN){ // old-town rooftops, some gables, the odd church spire
     const c=Math.floor(fx/9),u=fx/9-c,r=hash(c,SEED+195);let h=14+12*hash(c,SEED+196);
     if(r<0.6)h+=5*(1-Math.abs(2*u-1));else if(r>0.93&&Math.abs(u-0.5)<0.12)h+=16;
@@ -1073,7 +1142,7 @@ function farProf(b,fx){
 const FARC=[[132,150,189],[91,138,110],[198,111,72],[79,125,99],[118,126,148]];
 function midHill(b,fx){ // hill line without trees: where houses and landmarks stand
   if(b===ALPS)return 16+11*noise(fx/60,SEED+131);
-  if(b===FOREST)return 14+8*noise(fx/50,SEED+181);
+  if(b===FOREST)return fHill(fx);
   if(b===AACHEN)return 12+5*noise(fx/60,SEED+201);
   return midProf(b,fx);
 }
@@ -1084,8 +1153,7 @@ function lakeK(fx){ // 0..1: how much of an alpine lake is here (one per Alps st
 function midProf(b,fx){
   if(b===ALPS){let h=16+11*noise(fx/60,SEED+131);const c=Math.floor(fx/11);
     if(hash(c,SEED+132)<0.6){const tt=(8+hash(c,SEED+133)*8)-Math.abs(fx-(c*11+5))*2.3;if(tt>0)h+=tt;}return h;}
-  if(b===FOREST){let h=14+8*noise(fx/50,SEED+181);const c=Math.floor(fx/6);
-    const tt=(12+hash(c,SEED+182)*12)-Math.abs(fx-(c*6+3))*(hash(c,SEED+183)<0.3?1.2:2.4);if(tt>0)h+=tt;return h;}
+  if(b===FOREST)return fHill(fx)+fTrees(fx);
   if(b===AACHEN){const c=Math.floor(fx/7),u=fx/7-c; // rows of town houses on the hill
     return 12+5*noise(fx/60,SEED+201)+5+4*hash(c,SEED+202)+2*(1-Math.abs(2*u-1));}
   if(b===DESERT)return 10+7*noise(fx/45,SEED+141)+3*noise(fx/17,SEED+142);
@@ -1139,7 +1207,7 @@ function drawFarLand(b,e,fx,i,yb,sea){
     return;
   }
   let desc=false,crown=0;
-  if(b===FOREST){const u=(fx/5)%1;crown=u>0.55?-1:(u<0.3?1:0);}
+  if(b===FOREST)crown=crU>0.62?-1:(crU<0.35?1:0); // crU from farProf above: lit left side, shaded right side of each crown
   else desc=farProf(b,fx+3)<farProf(b,fx-3)-0.8;
   ctx.fillStyle=rgbc(desc?mix(col,[40,40,60],0.18):col);ctx.fillRect(i,y,1,fl);
   if(crown){ctx.fillStyle=rgbc(crown>0?mix(col,[220,240,200],0.12):mix(col,[20,40,30],0.22));ctx.fillRect(i,y,1,3);}
@@ -1152,6 +1220,36 @@ function haze(top,a){ // one translucent fill in the horizon colour below a per-
   ctx.fillStyle=rgbc(hazeC);ctx.globalAlpha=a;ctx.beginPath();ctx.moveTo(0,H);
   for(let i=0;i<W;i++){ctx.lineTo(i,top[i]);ctx.lineTo(i+1,top[i]);}
   ctx.lineTo(W,H);ctx.closePath();ctx.fill();ctx.globalAlpha=1;
+}
+function drawForestSight(mb,o3){ // rare sights in the mid layer: a castle ruin, or a railway viaduct with the odd train
+  const p=fPlanAt((o3+W/2)/0.35);if(!p||(p.sight!=='castle'&&p.sight!=='viaduct'))return;
+  const cx=Math.round(p.sx*0.35-o3);if(cx<-VIA_W-40||cx>W+VIA_W+40)return;
+  if(p.sight==='castle'){
+    const sp=SPR.castle,x0=cx-14,y0=mb-Math.round(fHill(p.sx*0.35))-sp.height+3; // stands on the hilltop
+    ctx.drawImage(sp,x0,y0);
+    for(let k=0;k<sp.width;k++){const i=x0+k;if(i>=0&&i<W)midTop[i]=Math.min(midTop[i],y0+sp.tops[k]);}
+    return;
+  }
+  // viaduct: stone arches across the valley at the height of its rims, a stream below
+  const P=p.sx*0.35,deck=mb-Math.round((fHillBase(P-VIA_W)+fHillBase(P+VIA_W))/2),x0=cx-VIA_W+6,x1=cx+VIA_W-6;
+  for(let i=Math.max(0,x0);i<=Math.min(W-1,x1);i++){
+    const fx=i+o3,floor=mb-Math.round(fHill(fx)),u=((fx-(P-VIA_W+6))%12+12)%12/12,pier=u<0.22||u>0.86;
+    if(Math.abs(fx-P)<16){ctx.fillStyle='#5fa0cf';ctx.fillRect(i,floor,1,2);ctx.fillStyle='#a9d8f2';ctx.fillRect(i,floor,1,1);}
+    const bot=pier?floor:deck+2+Math.round(7*(1-Math.sqrt(Math.max(0,1-Math.pow((u-0.54)/0.33,2)))));
+    ctx.fillStyle='#8d8273';ctx.fillRect(i,deck,1,Math.max(1,bot-deck));
+    if(pier){ctx.fillStyle='#726859';ctx.fillRect(i,deck+3,1,Math.max(0,floor-deck-3));}
+    ctx.fillStyle='#5c544a';ctx.fillRect(i,deck,1,1);
+    if(deck<midTop[i])midTop[i]=deck;
+  }
+  // a red regional train crosses now and then, coming out of the trees at both ends
+  const per=26,t=((time+hash(p.sx|0,SEED+1131)*per)%per),tx=Math.round(x0-34+t*28);
+  if(tx<x1){
+    ctx.save();ctx.beginPath();ctx.rect(x0,deck-8,x1-x0+1,8);ctx.clip();
+    for(let k=0;k<3;k++){const cx0=tx+k*11;
+      ctx.fillStyle='#c8202a';ctx.fillRect(cx0,deck-5,10,5);ctx.fillStyle='#f2f2f2';ctx.fillRect(cx0+1,deck-4,8,1);
+      ctx.fillStyle='#2c2c34';ctx.fillRect(cx0,deck-1,10,1);}
+    ctx.restore();
+  }
 }
 function drawBackdrop(){
   const base=Math.round(Hc-18+clamp(camYi*0.05,-12,12));
@@ -1260,6 +1358,18 @@ function drawBackdrop(){
     ctx.drawImage(sp,x0,y0);
     for(let k=0;k<sp.width;k++){const i=x0+k;if(i>=0&&i<W&&sp.tops[k]<sp.height)topBuf[i]=Math.min(topBuf[i],y0+sp.tops[k]);}
   }
+  // rare sight in the far layer: a few wind turbines on a forest ridge
+  for(const wx of [o2/0.12,(o2+W)/0.12]){
+    const p=fPlanAt(wx);if(!p||p.sight!=='wind')continue;
+    for(let k=0;k<3;k++){
+      const tx=p.sx*0.12+k*13+Math.round(hash(k,SEED+1130)*4),i=Math.round(tx-o2);if(i<-12||i>W+12)continue;
+      const gy=base-Math.round(farForest(tx))+2,hy=gy-22,a=time*(1.4+0.15*k)+k*2.1;
+      ctx.fillStyle='#dfe5ea';ctx.fillRect(i,hy,1,gy-hy);ctx.fillRect(i-1,hy-1,3,2);
+      for(let q=0;q<3;q++){const an=a+q*TAU/3,ca=Math.cos(an),sa=Math.sin(an);
+        for(let r=1;r<=9;r++)ctx.fillRect(Math.round(i+ca*r),Math.round(hy-sa*r),1,1);}
+    }
+    break;
+  }
   // atmospheric haze: the distant layers fade towards the horizon colour
   for(let i=0;i<W;i++)topBuf[i]=Math.min(backTop[i],topBuf[i],seaMask[i]?hz:H);
   haze(topBuf,0.18);
@@ -1278,14 +1388,16 @@ function drawBackdrop(){
       if(e<=0.001)continue;
       let raw=midProf(b,fx),hill=midHill(b,fx);
       let lake=0;
-      if(b===ALPS){lake=lakeK(fx)*sstep(0.6,1,e);if(lake>0){raw=lerp(raw,6,lake);hill=lerp(hill,6,lake);}}
+      if(b===ALPS||b===FOREST){lake=(b===ALPS?lakeK(fx):fLakeK(fx))*sstep(0.6,1,e);const lv=b===ALPS?6:13;if(lake>0){raw=lerp(raw,lv,lake);hill=lerp(hill,lv,lake);}}
       const h=raw*e;if(h<0.5)continue;
       const hy=mb-Math.round(hill*e);
       if(hy>buf[i])buf[i]=mb-hy;
       const y=mb-Math.round(h);if(y<midTop[i])midTop[i]=y;
       const col=MIDC[b];
       ctx.fillStyle=rgbc(col);ctx.fillRect(i,y,1,mb-y+1);
-      if(b===FOREST&&hy>y){ctx.fillStyle=rgbc(Math.floor(fx/6)%2?[44,100,68]:[34,82,55]);ctx.fillRect(i,y,1,hy-y+1);} // individual tree crowns
+      if(b===FOREST){ // crTone was set by midProf above
+        if(hy>y+0.5){ctx.fillStyle=rgbc(FTONE[crTone]);ctx.fillRect(i,y,1,hy-y+1);} // individual tree crowns
+        else if(lake<0.5){ctx.fillStyle='#4c8a56';ctx.fillRect(i,y,1,2);}}        // meadow in the clearings
       if(MIDT[b]){ctx.fillStyle=rgbc(MIDT[b]);ctx.fillRect(i,y,1,1);}
       if(b===AACHEN&&Math.round(fx)%3===1&&y+3<hy-1&&hash(Math.round(fx),SEED+203)<0.5){ctx.fillStyle='#d9c79a';ctx.fillRect(i,y+3,1,1);} // windows
       if(lake>0.8){ // water surface with shimmer
@@ -1295,6 +1407,7 @@ function drawBackdrop(){
       if(b===DESERT){ctx.fillStyle='#b8703f';if(noise(fx/7,SEED+144)>0.25)ctx.fillRect(i,y+4+Math.round(noise(fx/30,SEED+146)),1,1);if(noise(fx/9,SEED+145)>0.35)ctx.fillRect(i,y+9+Math.round(noise(fx/25,SEED+147)),1,1);}
     }
   }
+  drawForestSight(mb,o3);
   haze(midTop,0.1);
   // mid-layer landmarks (chalets, cactus and palm silhouettes, arches, acacias in the savanna)
   const c0=Math.floor((o3-20)/90),c1=Math.floor((o3+W+20)/90);
