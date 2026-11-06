@@ -32,20 +32,24 @@ Start in **Aachen** and ride a road bike with a kid trailer through a **forest**
 
 ### Levels
 
-Every ride is a level with two to four goals that all have to be reached in that one ride. A card at the start lists them. A checklist on the left then shows your progress for a few seconds and pops up again briefly whenever a goal moves on. Pause the game (**II** or P) to see all goals, your progress and your hearts. Reach them all, land, and the rider sits up and celebrates — the next level is unlocked (saved on your device). Then choose **KEEP RIDING** (left half of the screen, or R) to carry on with the same ride, or **NEXT LEVEL** (right half, or Space). A crash before the goals are done costs one of your **3 hearts** (shown next to the boost bar) and you retry the level. Hearts carry over from level to level; lose the last one and it's back to level 1 with 3 fresh hearts. Crashing after a completed level, or in free ride, costs nothing.
+Every ride is a level with two to five goals. A card at the start lists them. A checklist on the left then shows your progress for a few seconds and pops up again briefly whenever a goal moves on. Pause the game (**II** or P) to see all goals, your progress and your hearts. Reach them all, land, and the rider sits up and celebrates — the next level is unlocked (saved on your device). Then choose **KEEP RIDING** (left half of the screen, or R) to carry on with the same ride, or **NEXT LEVEL** (right half, or Space).
 
-| Level | Goals |
-|---|---|
-| 1 | Ride 250 m · 1 backflip |
-| 2 | Ride 400 m · 1 frontflip · 2 perfect landings |
-| 3 | Ride 550 m · 3 backflips · 1 slam |
-| 4 | Ride 700 m · perfect combo ×3 · big air 1.2 s |
-| 5 | Ride 900 m · 2 backflips · 2 frontflips · use the boost once |
-| 6 | Ride 1100 m · 3 slams · reach 90 km/h |
-| 7 | Ride 1300 m · perfect combo ×4 · big air 1.4 s · 3 frontflips |
-| 8 | Ride 1600 m · 5 backflips · 5 frontflips · boost twice |
-| 9 | Ride 1900 m · perfect combo ×5 · reach 110 km/h · big air 1.6 s |
-| 10 | Ride 2400 m · a double flip in one jump · perfect combo ×6 · 4 slams |
+A crash before the goals are done costs one of your **3 hearts** (shown next to the boost bar) and you retry the level. **Goals you have already reached stay reached** for the next tries (shown in green on the start card, and saved on your device), so you only need to do the missing ones; the score goal counts the points of a single ride. Hearts carry over from level to level. Lose the last one and you start the **same level** over, with 3 fresh hearts and all of its goals reset. Crashing after a completed level, or in free ride, costs nothing.
+
+The levels also lead you through the world: levels 1–2 stay in Aachen, level 3 takes you into the forest, level 6 into the desert, level 8 to the coast, and level 10 all the way to the Alps, the furthest biome. A **reach** goal counts once the new biome has fully taken over after its transition zone.
+
+| Level | Goals | Ends in |
+|---|---|---|
+| 1 | Ride 250 m · 1 backflip | Aachen |
+| 2 | Ride 400 m · 1 frontflip · 2 perfect landings · score 1000 | Aachen (Eifel hills) |
+| 3 | Reach the forest (495 m) · 3 backflips · 1 slam · score 1500 | Forest |
+| 4 | Ride 700 m · perfect combo ×3 · big air 1.2 s · score 2500 | Forest |
+| 5 | Ride 900 m · 2 backflips · 2 frontflips · use the boost once · score 4000 | Forest |
+| 6 | Reach the desert (1145 m) · 3 slams · reach 90 km/h · score 6500 | Desert |
+| 7 | Ride 1400 m · perfect combo ×4 · big air 1.4 s · 3 frontflips · score 10000 | Desert |
+| 8 | Reach the coast (1795 m) · 5 backflips · 5 frontflips · boost twice · score 15000 | Coast |
+| 9 | Ride 2100 m · perfect combo ×5 · reach 110 km/h · big air 1.6 s · score 25000 | Coast |
+| 10 | Reach the Alps (2445 m) · a double flip in one jump · perfect combo ×6 · 4 slams · score 50000 | Alps |
 
 After level 10, **free ride** (no goals) unlocks. On the title screen, pick any unlocked level with ← / → or by tapping the left or right edge of the screen.
 
