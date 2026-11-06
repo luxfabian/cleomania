@@ -390,6 +390,7 @@ function rearAxle(){const ca=Math.cos(bike.a),sa=Math.sin(bike.a);return [bike.x
 function phys(dt){
   const b=bike,live=state==='play';
   const gas=live&&input.gas,brk=(live&&input.brake)||state==='win'; // celebrating: coast to a stop
+  const [fF,fP]=rider==='woman'?[1.05,1.14]:[1,1]; // easter egg: she's 5% faster (1.14x power = +5% top speed against drag and rolling)
   let ca=Math.cos(b.a),sa=Math.sin(b.a);
   let fx=0,fy=-G,tq=0,any=false,gtx=1,gty=0,clr=1e9; // clr: lowest wheel's height above the ground
   slamCD=Math.max(0,slamCD-dt);
@@ -409,7 +410,7 @@ function phys(dt){
       let lim=MU*Fn;
       if(i===0&&tx<0.93&&ty>0&&vt<70)lim*=1+2*clamp((70-vt)/70,0,1); // grip assist on steep climbs
       const Fr=-Math.sign(vt)*Math.min(Math.abs(vt)*3,ROLL);
-      const Fd=(i===0&&gas)?Math.min(FMAX,POWER/Math.max(25,vt),lim):0;
+      const Fd=(i===0&&gas)?Math.min(FMAX*fF,POWER*fP/Math.max(25,vt),lim):0;
       const Fb=brk?-Math.sign(vt)*Math.min(Math.abs(vt)*12,BRAKE,MU*Fn):0; // brakes slow down, never push back
       const Ft=Fr+Fd+Fb;
       fx+=Fn*nx+Ft*tx;fy+=Fn*ny+Ft*ty;
