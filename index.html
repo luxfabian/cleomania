@@ -309,23 +309,28 @@ const DBG=(()=>{const q=new URLSearchParams(location.search);
 
 // ================= levels =================
 // every goal of a level has to be reached in one ride; after level 10 comes free ride (no goals)
+// the levels lead through the world: each 'reach' goal is the start of the next biome (after its transition),
+// so the Forest comes in level 3, the Desert in 6, the Coast in 8 and the Alps, the furthest biome, in 10
+const reachM=b=>Math.ceil((loopAt(b)-60)/PXM); // metres to where biome b has fully taken over
 const LEVELS=[
- [['dist',250],['back',1]],
- [['dist',400],['front',1],['perfect',2]],
- [['dist',550],['back',3],['slam',1]],
- [['dist',700],['combo',3],['air',1.2]],
- [['dist',900],['back',2],['front',2],['boost',1]],
- [['dist',1100],['slam',3],['speed',90]],
- [['dist',1300],['combo',4],['air',1.4],['front',3]],
- [['dist',1600],['back',5],['front',5],['boost',2]],
- [['dist',1900],['combo',5],['speed',110],['air',1.6]],
- [['dist',2400],['multi',2],['combo',6],['slam',4]],
+ [['dist',250],['back',1]],                                              // Aachen
+ [['dist',400],['front',1],['perfect',2]],                               // Aachen
+ [['reach',reachM(FOREST)],['back',3],['slam',1]],                       // 495 m
+ [['dist',700],['combo',3],['air',1.2]],                                 // Forest
+ [['dist',900],['back',2],['front',2],['boost',1]],                      // Forest
+ [['reach',reachM(DESERT)],['slam',3],['speed',90]],                     // 1145 m
+ [['dist',1400],['combo',4],['air',1.4],['front',3]],                    // Desert
+ [['reach',reachM(COAST)],['back',5],['front',5],['boost',2]],           // 1795 m
+ [['dist',2100],['combo',5],['speed',110],['air',1.6]],                  // Coast
+ [['reach',reachM(ALPS)],['multi',2],['combo',6],['slam',4]],            // 2445 m
 ];
 const FREE=LEVELS.length+1,pl=(n,w)=>n+' '+w+(n>1?'S':'');
 // [full label (level intro), current value, short line with progress (in-ride checklist)]
 const cnt=(w,v,n)=>w+' '+Math.min(v,n)+'/'+n;
+const reachName=n=>segName(segOf(n*PXM+60)); // the biome a 'reach' goal of n metres leads into
 const GOAL={
  dist:   [n=>'RIDE '+n+'M',              ()=>Math.floor(Math.max(0,(maxX-60)/PXM)), (v,n)=>'RIDE '+Math.min(v,n)+'/'+n+'M'],
+ reach:  [n=>'REACH '+reachName(n),       ()=>Math.floor(Math.max(0,(maxX-60)/PXM)), (v,n)=>reachName(n).replace('THE ','')+' '+Math.min(v,n)+'/'+n+'M'],
  back:   [n=>pl(n,'BACKFLIP'),           ()=>st.back,    (v,n)=>cnt('BACKFLIP',v,n)],
  front:  [n=>pl(n,'FRONTFLIP'),          ()=>st.front,   (v,n)=>cnt('FRONTFLIP',v,n)],
  perfect:[n=>pl(n,'PERFECT LANDING'),    ()=>st.perfect, (v,n)=>cnt('PERFECT',v,n)],
@@ -888,7 +893,7 @@ function update(dt){
     introT+=dt;
     if(introT>=3&&introT-dt<3)goalsT=4; // after the intro card, the checklist stays for a few seconds
     // ...and comes back briefly when a goal makes progress (distance and speed only when they're reached)
-    const sig=goals().map(([k,n])=>{const v=GOAL[k][1]();return v>=n?'D':k==='dist'||k==='speed'?'':Math.min(v,n).toFixed(1);}).join();
+    const sig=goals().map(([k,n])=>{const v=GOAL[k][1]();return v>=n?'D':k==='dist'||k==='reach'||k==='speed'?'':Math.min(v,n).toFixed(1);}).join();
     if(sig!==goalSig){if(goalSig&&introT>=3)goalsT=3;goalSig=sig;}
   }
   goalsT=Math.max(0,goalsT-dt);
