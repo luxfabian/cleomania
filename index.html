@@ -182,7 +182,7 @@ function terrainBase(x){ // the hills and kickers, before gaps and bridges
 const KL=64,LL=120,RUN=340,RUN2=480,FBL=380,FBL2=520; // kicker, landing; levelled runway and blend into the hills before and after (longer: you land fast)
 const GAPW=[84,62,72,78];           // gap width by biome (ALPS, FOREST, DESERT, COAST), +0..12, +6 after the first loop
 const WATER=[[92,170,216],[63,143,174],[63,163,160],[47,149,216]];
-// mega gaps, one per desert and Alps stretch, built like a ski jump: the hills rise for a while, a runway, a downhill in-run,
+// mega gaps, one per desert stretch, built like a ski jump: the hills rise for a while, a runway, a downhill in-run,
 // a steep kicker, a bottomless gap, then a landing hill shaped after the flight (the nominal flight lasts MEGA_T: room for
 // three backflips), its outrun, and the hills climbing back. The rise before and the climb after share the drop.
 // A flight like that needs more float than the game's gravity and drag allow, so a mega flight has its own (MEGA_G, MEGA_K).
@@ -199,7 +199,7 @@ function featsOf(sg){ // the gaps and bridges of loop segment sg, from left to r
   if(featSeed!==SEED){featSeed=SEED;featCache.clear();bridgeImg.clear();}
   let F=featCache.get(sg);if(F)return F;F=[];featCache.set(sg,F);
   if(sg<0)return F;
-  const b=(sg+LOOP0)%NB,s0=AL+sg*BL,mega=b===DESERT||b===ALPS;
+  const b=(sg+LOOP0)%NB,s0=AL+sg*BL,mega=b===DESERT;
   const meanH=(lo,hi)=>{let m=0;for(let k=0;k<=20;k++)m+=terrainBase(lerp(lo,hi,k/20))/21;return Math.round(m);}; // the mean height: gentle blends
   const add=(k,gap,x0)=>{ // a normal gap or bridge
     const r=hash(sg*4+k,SEED+804),w=gap?GAPW[b]+Math.round(12*r)+(sg>=NB?6:0):110+Math.round(90*r);
