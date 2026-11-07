@@ -103,7 +103,7 @@ function gpal(a,b,t,k){const A=BIO[a][k],B=BIO[b][k],T=TRP[a][k];return t<0.5?mi
 const rgbCache=new Map();
 function rgbc(a){const key=((a[0]|0)<<16)|((a[1]|0)<<8)|(a[2]|0);let v=rgbCache.get(key);
   if(!v){if(rgbCache.size>5000)rgbCache.clear();v=rgb(a);rgbCache.set(key,v);}return v;}
-const BL=7800,BBL=1900,AL=6000; // biome length, transition length, length of the Aachen start
+const BL=11700,BBL=1900,AL=6000; // biome length, transition length, length of the Aachen start (kept short)
 let bA=0,bB=1,bT=0;
 const LOOP0=FOREST; // every ride starts in Aachen, then loops Forest -> Desert -> Coast -> Alps -> Forest ...
 function biome(x){
@@ -577,6 +577,8 @@ const input={gas:false,brake:false};
 let slam=false,slamCD=0,airOK=false,flipT=0,flipDir=0,boost=0,boostOn=0,airT=0,airRot=0,wheelieT=0,trick=0,flips=0,maxX=60,crashT=0,overT=0,
     shake=0,crank=0,lastMile=0,flash=0,segShown=-99,newBest=false;
 let popups=[],parts=[],banner=null,pusher;
+const WAKE_KMH=30,WAKE_T=3; // the baby sleeps while the bike rolls: below 30 km/h for 3 seconds, it wakes up and the ride is over
+let napT=0,napArmed=false,wakeT=-1,overWhy='',napTold=false; // seconds too slow, armed once the ride is under way, seconds since it woke
 let hi=0;try{hi=+localStorage.getItem('cleomania_hi')||0;}catch(e){}
 // developer switches in the URL: ?debug (overlay, [ ] to jump), &x=15000 (start there), &seed=7, &still (no physics), &level=5
 const DBG=(()=>{const q=new URLSearchParams(location.search);
@@ -592,13 +594,13 @@ const LEVELS=[
  [['dist',250],['back',1]],                                              // Aachen
  [['dist',400],['front',1],['perfect',2],['score',1000]],                 // Aachen
  [['reach',reachM(FOREST)],['back',3],['slam',1],['score',1500]],        // 495 m
- [['dist',700],['combo',3],['air',1.2],['score',2500]],                  // Forest
- [['dist',900],['back',2],['front',2],['boost',1],['score',4000]],       // Forest
- [['reach',reachM(DESERT)],['slam',3],['speed',90],['score',6500]],      // 1145 m
- [['dist',1400],['combo',4],['air',1.4],['front',3],['score',10000]],     // Desert
- [['reach',reachM(COAST)],['back',5],['front',5],['boost',2],['score',15000]], // 1795 m
- [['dist',2100],['combo',5],['speed',110],['air',1.6],['score',25000]],   // Coast
- [['reach',reachM(ALPS)],['multi',2],['combo',6],['slam',4],['score',50000]], // 2445 m
+ [['dist',800],['combo',3],['air',1.2],['score',2500]],                  // Forest
+ [['dist',1100],['back',2],['front',2],['boost',1],['score',4000]],      // Forest
+ [['reach',reachM(DESERT)],['slam',3],['speed',90],['score',6500]],      // 1470 m
+ [['dist',1950],['combo',4],['air',1.4],['front',3],['score',10000]],     // Desert
+ [['reach',reachM(COAST)],['back',5],['front',5],['boost',2],['score',15000]], // 2445 m
+ [['dist',2950],['combo',5],['speed',110],['air',1.6],['score',25000]],   // Coast
+ [['reach',reachM(ALPS)],['multi',2],['combo',6],['slam',4],['score',50000]], // 3420 m
 ];
 const FREE=LEVELS.length+1,pl=(n,w)=>n+' '+w+(n>1?'S':'');
 // [full label (level intro), current value, short line with progress (in-ride checklist)]
@@ -656,6 +658,7 @@ function reset(){
   input.gas=input.brake=false;
   st={back:0,front:0,perfect:0,combo:0,air:0,slam:0,boost:0,speed:0,multi:0};winT=0;introT=0;
   levelDone=false;goalsT=0;goalSig=''; // this ride's statistics for the goals
+  napT=0;napArmed=false;wakeT=-1;overWhy='';
   maxX=60;place(60);
   updButtons();
 }
@@ -887,16 +890,18 @@ function endBoost(){
   boostOn=0;boost=0;
   if(pusher.on){pusher.on=false;pusher.leave={x:pusher.hand.x-8,t:0};}
 }
-function crash(){
-  state='crash';crashT=0;shake=0.45;sfx('crash');pop('CRASH!','#ff5555');
+function stopRide(snd,msg,col,sh,vib){ // a crash, or the baby waking up: the ride ends a moment later
+  state='crash';crashT=0;shake=sh;sfx(snd);pop(msg,col);
   input.gas=input.brake=false;
   if(boostOn>0)endBoost();
   document.body.classList.remove('play');
   bGas.classList.remove('on');bBrake.classList.remove('on');
-  try{navigator.vibrate&&navigator.vibrate(120);}catch(e){}
+  try{navigator.vibrate&&navigator.vibrate(vib);}catch(e){}
 }
+function crash(){stopRide('crash','CRASH!','#ff5555',0.45,120);}
+function babyWakes(){wakeT=0;overWhy='THE BABY WOKE UP!';stopRide('scream','WAAAAH!','#ff9fd1',0.2,[80,60,80,60,160]);}
 function keepRiding(){ // after a completed level: carry on with the same ride, upright and standing still
-  place(bike.x);
+  place(bike.x);napT=0;napArmed=false;
   state='play';winT=0;document.body.classList.add('play');
 }
 function levelWon(){ // brake to a stop, arms up, confetti; the next level unlocks
@@ -969,6 +974,10 @@ function sfx(n){
     case 'slam':tone(160,.16,{to:55,vol:.07});tone(520,.08,{at:.1});tone(780,.12,{at:.16});break;
     case 'level':[523,659,784,1046].forEach((f,i)=>tone(f,.14,{at:i*.11}));tone(1318,.4,{at:.44,vol:.06});tone(784,.4,{at:.44,type:'triangle',vol:.06});break;
     case 'start':tone(440,.08);tone(660,.12,{at:.08});break;
+    case 'tick':tone(880,.07,{type:'triangle',vol:.07});break;
+    case 'scream':for(let k=0;k<3;k++){const a=k*.62;tone(620,.32,{to:980,type:'sawtooth',vol:.045,at:a});tone(980,.3,{to:520,type:'sawtooth',vol:.045,at:a+.32});tone(310,.6,{to:420,vol:.02,at:a});}break;
+    case 'pop':tone(180+Math.random()*120,.18,{to:60,type:'triangle',vol:.05});break;
+    case 'finale':[523,659,784,1046,784,1046,1318,1568].forEach((f,i)=>{tone(f,.16,{at:i*.13,vol:.05});tone(f/2,.16,{at:i*.13,type:'triangle',vol:.05});});tone(2093,.6,{at:1.04,vol:.05});break;
   }
 }
 
@@ -1142,7 +1151,7 @@ addEventListener('keydown',e=>{
   else if(k==='m'||k==='M')toggleMute();
   else if(k==='g'||k==='G')DBG.overlay=!DBG.overlay;
   else if((k==='r'||k==='R')&&state==='win'&&winT>3.2)keepRiding();
-  else if(DBG.on&&(k==='['||k===']'))place(Math.max(60,bike.x+(k===']'?3900:-3900)));
+  else if(DBG.on&&(k==='['||k===']'))place(Math.max(60,bike.x+(k===']'?BL/2:-BL/2)));
 });
 addEventListener('keyup',e=>{
   const k=e.key;
@@ -1167,13 +1176,22 @@ function update(dt){
     while(acc>=DT&&n<24){phys(DT);acc-=DT;n++;}
     if(n>=24)acc=0;
   }
-  if(state==='crash'){crashT+=dt;if(crashT>1.4)gameOver();}
+  if(wakeT>=0)wakeT+=dt;
+  if(state==='crash'){crashT+=dt;if(crashT>(wakeT>=0?2.4:1.4))gameOver();} // a screaming baby takes a little longer
   if(state==='over')overT+=dt;
   if(state==='win'){winT+=dt;
     if(winT<1.8&&Math.random()<0.8){ // confetti from the rider's raised hands
       const ca=Math.cos(bike.a),sa=Math.sin(bike.a),x=bike.x+8*ca-20*sa,y=bike.y+8*sa+20*ca;
       parts.push({x,y,vx:(Math.random()-0.5)*140,vy:40+Math.random()*120,l:0,m:1.4+Math.random()*0.8,
                   c:['#ff5c8a','#ffd23f','#3fc1c9','#7dff8a','#ffffff'][Math.floor(Math.random()*5)]});
+    }
+    if(level>=LEVELS.length){ // the whole tour is done: fireworks and a fanfare
+      if(winT>=2.6&&winT-dt<2.6)sfx('finale');
+      if(winT>0.6&&Math.random()<dt*2.5){
+        const x=cam.x+W*(0.12+0.76*Math.random()),y=camYi+Hc-H*(0.1+0.3*Math.random()),c=['#ff5c8a','#ffd23f','#3fc1c9','#7dff8a','#ffffff','#b07cd8'][Math.floor(Math.random()*6)];
+        for(let k=0;k<26;k++){const a=k/26*TAU,v=40+Math.random()*50;parts.push({x,y,vx:Math.cos(a)*v,vy:Math.sin(a)*v,l:0,m:1+Math.random()*0.6,c});}
+        sfx('pop');
+      }
     }}
   if(state==='play'){
     introT+=dt;
@@ -1190,6 +1208,15 @@ function update(dt){
     st.speed=Math.max(st.speed,Math.hypot(bike.vx,bike.vy)/PXM*3.6);
     const m=Math.floor((maxX-60)/PXM/100);
     if(m>lastMile){lastMile=m;flash=0.9;sfx('mile');}
+    { // the baby sleeps while the bike rolls; too slow for WAKE_T seconds and it wakes up
+      const kmh=Math.hypot(bike.vx,bike.vy)/PXM*3.6;
+      if(!napArmed&&(kmh>=WAKE_KMH||introT>8)){napArmed=true; // armed once the ride is under way
+        if(!napTold){napTold=true;pop('ABOVE 30 KM/H: BABY SLEEPS','#ff9fd1');}} // the rule, once per session
+      if(napArmed&&kmh<WAKE_KMH){const t0=napT;napT+=dt;
+        if(napT>=WAKE_T)babyWakes();
+        else if(t0===0||Math.ceil(WAKE_T-napT)!==Math.ceil(WAKE_T-t0))sfx('tick');}
+      else napT=0;
+    }
     if(boostOn>0){boostOn-=dt;boost=Math.max(0,boostOn/BOOST_T);if(boostOn<=0)endBoost();}
     const seg=segOf(bike.x+BBL/2);
     if(seg!==segShown){segShown=seg;banner={text:segName(seg),t:0};musicBiome();}
@@ -1459,7 +1486,7 @@ const STRATA=[strataStrip(1),strataStrip(0.84)];
 // the Matterhorn: one famous peak in the first Alps stretch, painted once in pixels of the most distant layer as seen from Zermatt:
 // a summit cap hooked to the left, the sunlit snowy north face with rock ribs, the shaded east face behind the
 // Hörnli ridge, a dark rocky ridge with its own small peak in front on the left, a snowy shoulder and glacier on the right
-const MH_V=loopAt(ALPS)+3600,MH_L=75,MH_TOP=89; // world x of the view point: there the peak stands in the middle of the valley
+const MH_V=loopAt(ALPS)+Math.round(BL*0.45),MH_L=75,MH_TOP=89; // world x of the view point: there the peak stands in the middle of the valley
 const MXB=MH_V*0.05+170,MXF=MH_V*0.12+170,MXM=MH_V*0.35+170; // the peak (back layer) and the valley (far and mid layers)
 const mhDip=(fx,c,w0,w1)=>lerp(0.3,1,sstep(w0,w1,Math.abs(fx-c))); // the valley opens in the mid layer
 const MH_H=[ // height of each column, resampled from a photo taken in Zermatt: the dark ridge with its small peak, the left face with
@@ -1807,7 +1834,7 @@ function decorCand(c){ // deterministic candidate for cell c, or null
   if(tot<=0)return null;
   const dens=0.34+0.46*sstep(0.25,0.85,pM)+0.12*bump(pM,0.15,0.5)*bump(pT,0.5,0.9)+0.14*bump(pS,0.3,0.85); // lusher, savanna, dunes: more
   const grove=clamp(0.5+0.9*noise(x/380,SEED+620),0,1);            // groves and clearings
-  if(hash(c,SEED+602)>dens*(0.45+0.9*grove)*best*(1-0.3*wild))return null; // thins out at niche edges; 30% sparser outside the city
+  if(hash(c,SEED+602)>dens*(0.45+0.9*grove)*best*(1-0.3*wild)*(1+0.38*sstep(0.5,0.8,pS)))return null; // thins out at niche edges; 30% sparser outside the city, 30% more on the beach
   let q=hash(c,SEED+603)*tot,sp=NICHE[NICHE.length-1][0];
   for(let k=0;k<NICHE.length;k++){q-=nSuit[k];if(q<0){sp=NICHE[k][0];break;}}
   const kind=KIND.get(sp)||'small',sc=DSCALE*(kind==='tree'?0.88+0.24*hash(c,SEED+607):TINY.has(sp)?0.6:1); // trees vary in size
@@ -2008,11 +2035,17 @@ function drawTrailer(){
   poly([[-8.5,-2],[-10,6],[-10,12],[-8,17],[-4,19.5],[2,19.5],[6,16.5],[8.5,11],[9,3],[7,-2]]);ctx.fill();
   ctx.fillStyle='#b89c6b';poly([[-8.5,-2],[-9.7,4],[8.9,4],[7,-2]]);ctx.fill();
   ctx.fillStyle='#6b7480';poly([[-7.5,5],[-7.5,12.5],[-5.5,16.5],[1.5,17],[5.5,14],[6.5,9],[6.5,5]]);ctx.fill();
-  // kid inside
-  ctx.fillStyle='#ffd8b0';circ(-0.5,10.5,2.3);ctx.fill();
+  // the baby inside: asleep while the bike rolls, stirring when it's too slow, screaming once awake
+  const awake=wakeT>=0,stir=awake?Math.sin(time*40)*0.6:napT>0?Math.sin(time*25)*0.5*napT/WAKE_T:0;
+  ctx.save();ctx.translate(stir,0);
+  ctx.fillStyle=awake?'#ffb39a':'#ffd8b0';circ(-0.5,10.5,2.3);ctx.fill();
   ctx.fillStyle='#ff8fab';ctx.beginPath();ctx.arc(-0.5,-10.9,2.6,Math.PI,TAU);ctx.fill();
   ctx.fillStyle='#ff8fab';ctx.fillRect(-2.6,-7.8,4.4,2.8);
-  ctx.fillStyle='#222';ctx.fillRect(0.6,-10.6,0.8,0.8);
+  ctx.fillStyle='#222';
+  if(awake||napT>WAKE_T*0.6)ctx.fillRect(0.6,-11,0.8,0.9);else ctx.fillRect(0.3,-10.5,1.3,0.45); // eyes open, or shut tight
+  if(awake){ctx.fillStyle='#6a1424';ctx.fillRect(0.7,-9.5,1.3,1.1); // a wide-open mouth and tears
+    ctx.fillStyle='#8fd3f4';ctx.fillRect(1.5,-10.2+(time*5)%2.2,0.6,0.8);}
+  ctx.restore();
   ctx.strokeStyle='rgba(30,32,36,.5)';ctx.lineWidth=0.5;
   for(const x of [-5,-2,1,4])seg(x,5,x,16.5);
   seg(-7.5,9,6.5,9);seg(-7,13,5.5,13);
@@ -2022,6 +2055,12 @@ function drawTrailer(){
   ctx.strokeStyle='#111';ctx.lineWidth=1.8;seg(-12.5,19.5,-13.6,19.8);
   wheel(0,0,tr.spin,6);
   ctx.restore();
+  if(wakeT<0&&napT===0&&state!=='over')for(let k=0;k<2;k++){ // sleeping: little z's float up from the trailer
+    const ph=(time*0.55+k*0.5)%1,x=Math.round(tr.x-camXi+3+ph*6),y=Math.round(Hc-(tr.y-camYi)-23-ph*10);
+    ctx.globalAlpha=Math.sin(ph*Math.PI)*0.85;ctx.fillStyle='#ffffff';
+    ctx.fillRect(x,y,3,1);ctx.fillRect(x+1,y+1,1,1);ctx.fillRect(x,y+2,3,1);
+    ctx.globalAlpha=1;
+  }
 }
 function wleg(hx,hy,fx,fy,c1,c2,c3){
   const k=ik(hx,hy,fx,fy,6,6.2,1,0);
@@ -2114,6 +2153,11 @@ function drawHUD(){
     txt(p.t,W/2,H*0.26+i*11-Math.min(p.a,0.3)*12,p.c,8,'center');
   });
   ctx.globalAlpha=1;
+  if(napT>0&&state==='play'){ // too slow: the baby is waking up
+    const y=Math.round(H*0.38);
+    txt('FASTER! THE BABY WAKES',W/2,y,Math.floor(time*6)%2?'#ff9fd1':'#ffffff',8,'center');
+    outlined(String(Math.ceil(WAKE_T-napT)),W/2,y+12,24,'#ffffff','#e63946');
+  }
   if(banner){
     const a=banner.t<0.3?banner.t/0.3:(banner.t>2.3?1-(banner.t-2.3)/0.5:1);
     ctx.globalAlpha=clamp(a,0,1);
@@ -2183,6 +2227,7 @@ function drawTitle(){
   if(Math.floor(time*2)%2===0)txt(touch?'TAP TO RIDE':'PRESS SPACE TO RIDE',W/2,ty+big+10,'#ffffff',8,'center');
   const lines=touch?['PEDAL: RIDE / FRONTFLIP','BRAKE: STOP / BACKFLIP','BOTH NEAR GROUND: SLAM','TRICKS CHARGE THE BOOST',"DON'T LAND ON YOUR HEAD!"]
                    :['RIGHT: PEDAL / FRONTFLIP','LEFT: BRAKE / BACKFLIP','BOTH NEAR GROUND: SLAM','SPACE: BOOST    P: PAUSE',"DON'T LAND ON YOUR HEAD!"];
+  if(H-(lines.length+1)*11-42>ry+12)lines.splice(4,0,'ABOVE 30 KM/H: BABY SLEEPS'); // the baby rule, if there's room
   const y0=Math.round(H-lines.length*11-36); // leaves room for the menu buttons
   const pw=Math.min(W-12,26*8+16);
   ctx.fillStyle='rgba(15,10,30,.6)';ctx.fillRect(Math.round(W/2-pw/2),y0-6,pw,lines.length*11+10);
@@ -2198,8 +2243,9 @@ function drawTitle(){
   if(H>W)txt('TIP: TURN PHONE SIDEWAYS',W/2,ry+14,'#8fe3ff',8,'center');
 }
 function drawOver(){
-  const G=goals(),w=Math.min(W-16,232),dy=G.length?(heartLost?30:12):0,y=panel(w,118+dy);
-  outlined('GAME OVER',W/2,y+10,16,'#ff5555','#5a1020');
+  const G=goals(),w=Math.min(W-16,232),wy=overWhy?12:0,dy=G.length?(heartLost?30:12):0,y0=panel(w,118+dy+wy),y=y0+wy; // wy: room for why the ride ended
+  outlined('GAME OVER',W/2,y0+10,16,'#ff5555','#5a1020');
+  if(overWhy)txt(overWhy,W/2,y0+30,'#ff9fd1',8,'center');
   if(G.length)txt(levelDone?levelName(level)+' COMPLETE!':levelName(level)+': '+G.filter(goalMet).length+'/'+G.length+' GOALS',W/2,y+32,levelDone?'#7dff8a':'#ffd23f',8,'center');
   if(heartLost){
     if(outOfHearts){txt('NO HEARTS LEFT!',W/2,y+44,'#ff5555',8,'center');txt('GOALS RESET',W/2,y+55,'#ff5555',8,'center');}
@@ -2216,18 +2262,31 @@ function drawOver(){
 }
 function drawWon(){ // after the celebration: level complete, on to the next one
   if(winT<2.6)return;
-  const w=Math.min(W-16,250),y=panel(w,104),last=level>=LEVELS.length;
+  if(level>=LEVELS.length)return drawFinale();
+  const w=Math.min(W-16,250),y=panel(w,104);
   outlined(levelName(level),W/2,y+10,16,'#7dff8a','#14502a');
   outlined('COMPLETE!',W/2,y+32,16,'#ffd23f','#e63946');
-  txt(last?'ALL LEVELS DONE!':'NEXT: '+levelName(level+1),W/2,y+58,'#8fe3ff',8,'center');
+  txt('NEXT: '+levelName(level+1),W/2,y+58,'#8fe3ff',8,'center');
   txt('SCORE '+pad5(score())+(newBest?'  NEW BEST!':''),W/2,y+70,'#ffffff',8,'center');
-  if(winT>3.2){ // two choices: left half keeps riding, right half goes on
-    const bw=Math.min(112,Math.floor((w-18)/2));
-    [[touch?'KEEP RIDING':'R: RIDE ON',W/2-bw/2-4,'#8fe3ff'],[touch?(last?'FREE RIDE':'NEXT LEVEL'):'SPACE: NEXT',W/2+bw/2+4,'#ffd23f']].forEach(([t,cx,c])=>{
-      ctx.strokeStyle=c;ctx.lineWidth=1;ctx.strokeRect(Math.round(cx-bw/2)+0.5,y+83.5,bw-1,15);
-      txt(t,cx,y+87,c,8,'center');
-    });
-  }
+  winButtons(w,y+83,false);
+}
+function drawFinale(){ // after the last level: the whole tour from Aachen to the Matterhorn is done
+  const w=Math.min(W-16,250),y=panel(w,134);
+  outlined('YOU DID IT!',W/2,y+10,16,'#ffd23f','#e63946');
+  txt('CONGRATULATIONS!',W/2,y+33,'#ffffff',8,'center');
+  txt('ALL '+LEVELS.length+' LEVELS DONE',W/2,y+47,'#7dff8a',8,'center');
+  txt('AACHEN TO THE MATTERHORN',W/2,y+58,'#8fe3ff',8,'center');
+  txt('AND THE BABY SLEPT TIGHT',W/2,y+69,'#ff9fd1',8,'center');
+  txt('SCORE '+pad5(score())+(newBest?'  NEW BEST!':''),W/2,y+84,newBest?'#ffd23f':'#ffffff',8,'center');
+  winButtons(w,y+113,true);
+}
+function winButtons(w,y,last){ // two choices: left half keeps riding, right half goes on
+  if(winT<=3.2)return;
+  const bw=Math.min(112,Math.floor((w-18)/2));
+  [[touch?'KEEP RIDING':'R: RIDE ON',W/2-bw/2-4,'#8fe3ff'],[touch?(last?'FREE RIDE':'NEXT LEVEL'):'SPACE: NEXT',W/2+bw/2+4,'#ffd23f']].forEach(([t,cx,c])=>{
+    ctx.strokeStyle=c;ctx.lineWidth=1;ctx.strokeRect(Math.round(cx-bw/2)+0.5,y+0.5,bw-1,15);
+    txt(t,cx,y+4,c,8,'center');
+  });
 }
 
 // ================= render =================
