@@ -28,8 +28,8 @@ Start in **Aachen** and ride a road bike with a kid trailer through a **forest**
 - **Good landings** give a small push and keep your combo. **Rough** and **sloppy** landings cost speed and reset the combo.
 - **Flips, big air and perfect landings** charge the boost meter.
 - **Boost:** for 5 seconds a teammate in a black, colourfully flecked kit pushes the trailer and keeps the bike steady.
-- **Keep the baby asleep:** the baby in the trailer sleeps as long as the bike rolls. Drop below **30 km/h** and a 3-second countdown starts; get back up to speed and it stops. If it runs out, the baby wakes up screaming and the ride is over. The rule starts once the ride is under way (at 30 km/h, or 8 seconds after the start), so pulling away is safe.
-- **Game over** when the rider's head touches the ground, or when the baby wakes up. The high score is saved on your device.
+- **Keep Cleo asleep:** Cleo sleeps in the trailer as long as the bike rolls. Drop below **40 km/h** and she starts to stir; after 2 seconds a 3-second countdown starts, and getting back up to speed stops it. If it runs out, Cleo wakes up screaming and the ride is over. The rule starts once the ride is under way (at 40 km/h, or 8 seconds after the start), so pulling away is safe.
+- **Game over** when the rider's head touches the ground, or when Cleo wakes up. The high score is saved on your device.
 
 ### Levels
 
