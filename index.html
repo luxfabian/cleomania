@@ -1193,24 +1193,33 @@ function matterhorn(fx){
   if(dx>-5&&dx<3)h+=2+(dx>0?1:0); // the hooked summit
   return h;
 }
-const backTop=new Float32Array(4096),midTop=new Float32Array(4096),topBuf=new Float32Array(4096),mistBuf=new Float32Array(4096),seaBot=new Float32Array(4096);
-function envOut(t){return 1-sstep(0,0.65,t);}   // outgoing biome's scenery shrinks away
-function envIn(t){return sstep(0.35,1,t);}      // incoming biome's scenery rises
-function drawFarLand(b,e,fx,i,yb,sea){
-  const raw=farProf(b,fx),h=raw*e;
-  if(h<0.5)return;
-  const y=yb-Math.round(h),col=FARC[b],bot=yb+1; // silhouette only down to its baseline
-  const fl=bot-y;
+const backTop=new Float32Array(4096),midTop=new Float32Array(4096),topBuf=new Float32Array(4096),mistBuf=new Float32Array(4096),isleTop=new Float32Array(4096),midVis=new Uint8Array(4096);
+// Biome changes in the background are hidden, not blended: in every layer the incoming biome's scenery rises behind the
+// outgoing one, then the outgoing scenery sinks (keeping its shape) until the next nearer layer covers the seam.
+// The sea is a flat plane behind all land; the land beside it is lifted above the horizon to hide where the water ends.
+function envOut(t){return 1-sstep(0.25,0.95,t);} // 1 = outgoing scenery at full height, 0 = sunk away
+function envIn(t){return sstep(0.05,0.75,t);}     // incoming scenery rises while the outgoing one sinks in front
+const BACK_SINK=95,FAR_SINK=125,FAR_GONE=-50;     // far scenery below FAR_GONE is behind the mid layer
+function sinkBy(e,d,fx,amp,s){ // how far scenery has sunk, with a rough edge: strongest halfway down, gone at both ends
+  return (1-e)*d+amp*4*e*(1-e)*(0.55*noise(fx/9,s)+0.3*noise(fx/4,s+1)+0.15*noise(fx/1.7,s+2));
+}
+function seaLift(A,B,t,top){ // land next to the sea reaches above the horizon while the water's edge is behind it
+  if(B===COAST)return top*sstep(0,0.15,t);
+  if(A===COAST)return top*(1-sstep(0.8,1,t));
+  return 0;
+}
+function drawFarLand(b,h,raw,lift,fx,i,yb){ // h = raw height after sinking; the body reaches down behind the mid layer
+  const y=yb-Math.round(h),col=FARC[b],fl=H-y;
   if(y<topBuf[i])topBuf[i]=y;
   if(b===AACHEN){ // skyline with rows of windows
     ctx.fillStyle=rgbc(col);ctx.fillRect(i,y,1,fl);const ix=Math.round(fx);
-    if(ix%3===1)for(let yy=y+4;yy<bot-2;yy+=4)if(hash(ix*7+yy,SEED+197)<0.4){ctx.fillStyle='#b4c0d4';ctx.fillRect(i,yy,1,1);}
+    if(ix%3===1)for(let yy=y+4;yy<H-2;yy+=4)if(hash(ix*7+yy,SEED+197)<0.4){ctx.fillStyle='#b4c0d4';ctx.fillRect(i,yy,1,1);}
     return;
   }
-  if(b===DESERT){ // layered sandstone
-    const src=clamp(y-(yb-60)+Math.round(3*noise(fx/45,SEED+117)),0,159),len=Math.min(160-src,fl);
+  if(b===DESERT){ // layered sandstone; a sinking flank cuts through the level layers like an eroded slope
+    const src=clamp(60-Math.round(h)+Math.round(3*noise(fx/45,SEED+117)),0,159),len=Math.min(160-src,fl);
     ctx.drawImage(STRATA[0],0,src,1,len,i,y,1,len);
-    const drop=Math.round((farProf(b,fx-1)-raw)*e);
+    const drop=Math.round(Math.max(farProf(b,fx-1),lift)-raw);
     if(drop>1){const l2=Math.min(drop+2,len);ctx.drawImage(STRATA[1],0,src,1,l2,i,y,1,l2);} // shadow only on the wall face
     if(len<fl){ctx.fillStyle='#b8643c';ctx.fillRect(i,y+len,1,fl-len);}
     ctx.fillStyle='#f0b07a';ctx.fillRect(i,y,1,1);
@@ -1223,8 +1232,8 @@ function drawFarLand(b,e,fx,i,yb,sea){
   if(crown){ctx.fillStyle=rgbc(crown>0?mix(col,[220,240,200],0.12):mix(col,[20,40,30],0.22));ctx.fillRect(i,y,1,3);}
   ctx.fillStyle=rgbc(mix(col,[30,30,50],desc?0.3:0.14));
   const nk=b===FOREST?1:3;
-  for(let k=0;k<nk;k++){const r=hash(Math.round(fx)*5+k,SEED+780),dy=4+Math.floor(r*2.5*Math.max(4,h-6));if(r<0.4&&dy<fl-2)ctx.fillRect(i,y+dy,1,1+(r<0.12?1:0));}
-  if(b===ALPS&&raw>50&&e>0.3){ctx.fillStyle=desc?'#d5deef':'#f4f7ff';ctx.fillRect(i,y,1,Math.round((raw-50)*0.8*e)+1);}
+  for(let k=0;k<nk;k++){const r=hash(Math.round(fx)*5+k,SEED+780),dy=4+Math.floor(r*2.5*Math.max(4,raw-6));if(r<0.4&&dy<fl-2)ctx.fillRect(i,y+dy,1,1+(r<0.12?1:0));}
+  if(b===ALPS&&h>50){ctx.fillStyle=desc?'#d5deef':'#f4f7ff';ctx.fillRect(i,y,1,Math.round((h-50)*0.8)+1);} // snow only above the snow line
 }
 function haze(top,a){ // one translucent fill in the horizon colour below a per-column skyline
   ctx.fillStyle=rgbc(hazeC);ctx.globalAlpha=a;ctx.beginPath();ctx.moveTo(0,H);
@@ -1268,16 +1277,15 @@ function drawBackdrop(){
   const o1=Math.floor(camXi*0.05);
   for(let i=0;i<W;i++){
     const fx=i+o1;biome(fx/0.05);
-    const A=bA,B=bB,t=bT,wA=A===COAST?0:envOut(t),wB=B===COAST?0:envIn(t);
+    const A=bA,B=bB,t=bT;
     backTop[i]=H;
-    if(wA+wB>0.001){ctx.fillStyle=rgbc(mix(BACKC[A],BACKC[B],wB/(wA+wB)));ctx.fillRect(i,base-8,1,H-base+8);backTop[i]=base-8;}
-    for(let k=0;k<2;k++){
+    for(let k=1;k>=0;k--){ // incoming first, so the outgoing range stays in front while it sinks
       const b=k?B:A,e=k?envIn(t):envOut(t);
-      if(e<=0.001||b===COAST)continue;
-      const raw=backProf(b,fx,0),h=raw*e;if(h<0.5)continue;
+      if(e<=0||b===COAST)continue;
+      const raw=backProf(b,fx,0),h=raw-sinkBy(e,BACK_SINK,fx,4,SEED+1141+b*3);if(h<-12)continue; // below that, the far layer covers it
       const y=base-8-Math.round(h);if(y<backTop[i])backTop[i]=y;
-      ctx.fillStyle=rgbc(BACKC[b]);ctx.fillRect(i,y,1,base-8-y+1);
-      if(b===ALPS&&raw>58&&e>0.25){ctx.fillStyle='#eef3fb';ctx.fillRect(i,y,1,Math.round((raw-58)*0.7*e)+1);}
+      ctx.fillStyle=rgbc(BACKC[b]);ctx.fillRect(i,y,1,H-y);
+      if(b===ALPS&&h>58){ctx.fillStyle='#eef3fb';ctx.fillRect(i,y,1,Math.round((h-58)*0.7)+1);}
     }
   }
   haze(backTop,0.18); // extra haze for the most distant layer
@@ -1286,41 +1294,28 @@ function drawBackdrop(){
   for(let i=0;i<W;i++){
     const fx=i+o2;biome(fx/0.12);
     const A=bA,B=bB,t=bT;
-    const cw=(A===COAST?1-t:0)+(B===COAST?t:0);
     mistBuf[i]=(A===FOREST?envOut(t):0)+(B===FOREST?envIn(t):0);
-    topBuf[i]=H;buf[i]=0;
-    seaMask[i]=cw>0.2?1:0;
-    // the shoreline runs diagonally: water further out first, beach in the foreground
-    const sb=seaMask[i]?Math.round(hz+(H-hz)*sstep(0.2,0.7,cw)):hz;seaBot[i]=sb;
-    if(seaMask[i]){ctx.fillStyle=rgbc(SEA);ctx.fillRect(i,hz,1,sb-hz);ctx.fillStyle='#8fd3f4';ctx.fillRect(i,hz,1,1);
-      if(sb<H){ctx.fillStyle='#f3e2b0';ctx.fillRect(i,sb,1,1);}} // surf line
-    // land further out recedes towards the horizon as the bay opens
-    const yb=seaMask[i]?Math.round(lerp(base,hz,sstep(0.2,0.55,cw))):base;
-    { // shared body below the land line, turning into beach sand towards the sea
-      const st=seaMask[i]?sb+1:base;
-      if(st<H){
-        const wA=A===COAST?0:envOut(t),wB=B===COAST?0:envIn(t);
-        let bc=wA+wB>0.001?mix(A===DESERT?[184,100,60]:FARC[A],B===DESERT?[184,100,60]:FARC[B],wB/(wA+wB)):[214,196,146];
-        bc=mix(bc,[214,196,146],sstep(0,0.35,cw));
-        ctx.fillStyle=rgbc(bc);ctx.fillRect(i,st,1,H-st);
-      }
-    }
-    for(let k=0;k<2;k++){
-      const b=k?B:A,e=k?envIn(t):envOut(t);
-      if(e<=0.001)continue;
-      if(b===COAST){
-        if(!seaMask[i])continue;
-        const h=farProf(COAST,fx)*e;if(h<=0.5)continue;
-        const y=hz-Math.round(h);topBuf[i]=Math.min(topBuf[i],y);
+    topBuf[i]=H;isleTop[i]=H;
+    // the sea lies behind everything: it starts behind the lifted land and ends behind the land rising in front of it
+    seaMask[i]=(A===COAST&&t<0.8)||(B===COAST&&t>0.2)?1:0;
+    if(seaMask[i]){
+      ctx.fillStyle=rgbc(SEA);ctx.fillRect(i,hz,1,H-hz);ctx.fillStyle='#8fd3f4';ctx.fillRect(i,hz,1,1);
+      const e=A===COAST?envOut(t):envIn(t),h=farProf(COAST,fx)-(1-e)*12; // islands dip below the horizon
+      if(h>0.5){
+        const y=hz-Math.round(h);isleTop[i]=y;
         ctx.fillStyle=rgbc(FARC[COAST]);ctx.fillRect(i,y,1,Math.round(h)+1);
         const c=Math.floor(fx/260);
-        if(e>0.8&&hash(c,SEED+125)<0.6&&Math.round(fx)===Math.round(c*260+70+hash(c,SEED+122)*120))ctx.drawImage(SPR.light,i-2,y-SPR.light.height+1);
-        continue;
+        if(e>0.95&&hash(c,SEED+125)<0.6&&Math.round(fx)===Math.round(c*260+70+hash(c,SEED+122)*120))ctx.drawImage(SPR.light,i-2,y-SPR.light.height+1);
       }
-      const before=topBuf[i];
-      drawFarLand(b,e,fx,i,yb,seaMask[i]===1);
-      const hh=farProf(b,fx)*e;if(hh>=0.5)topBuf[i]=Math.min(before,yb-Math.round(hh));
     }
+    const lift=seaLift(A,B,t,base-hz+4);
+    for(let k=1;k>=0;k--){ // incoming first, so the outgoing land stays in front while it sinks
+      const b=k?B:A,e=k?envIn(t):envOut(t);
+      if(e<=0||b===COAST)continue;
+      const raw=Math.max(farProf(b,fx),lift),sk=sinkBy(e,FAR_SINK,fx,10,SEED+1161+b*3),h=raw-(b===DESERT?Math.floor(sk/6)*6:sk); // sandstone sinks in terraces
+      if(h>FAR_GONE)drawFarLand(b,h,raw,lift,fx,i,base);
+    }
+    if(topBuf[i]===H&&!seaMask[i]){ctx.fillStyle=rgbc(FARC[A]);ctx.fillRect(i,base,1,H-base);} // safety net, normally unseen
   }
   // sea details only where open water is visible
   ctx.fillStyle='#2676ae';
@@ -1329,19 +1324,19 @@ function drawBackdrop(){
     for(let j=-1;j<W/sp+1;j++){
       const id=j+Math.floor(drift/sp),x0=Math.round(j*sp-(drift%sp)+hash(id*13+k,SEED+141)*sp*0.6),len=2+Math.floor(hash(id*7+k,SEED+142)*6);
       if(hash(id*3+k,SEED+143)<0.25)continue;
-      for(let q=0;q<len;q++){const xx=x0+q;if(xx>=0&&xx<W&&seaMask[xx]&&r<topBuf[xx]&&r<seaBot[xx]-1)ctx.fillRect(xx,r,1,1);}
+      for(let q=0;q<len;q++){const xx=x0+q;if(xx>=0&&xx<W&&seaMask[xx]&&r<topBuf[xx])ctx.fillRect(xx,r,1,1);}
     }
   }
   for(let k=0;k<3;k++){
     const x=Math.round((((hash(k,SEED+131)*W*1.5-camXi*0.1+time*(3+k))%(W+30))+W+30)%(W+30))-15;
     const yb=hz-3+k*3+Math.round(Math.sin(time*2+k));
-    if(x>=0&&x+6<W&&seaMask[x]&&seaMask[x+5]&&topBuf[x]>yb+6&&topBuf[x+5]>yb+6&&seaBot[x]>yb+7&&seaBot[x+5]>yb+7)ctx.drawImage(SPR.sail,x,yb);
+    if(x>=0&&x+6<W&&seaMask[x]&&seaMask[x+5]&&Math.min(topBuf[x],isleTop[x])>yb+6&&Math.min(topBuf[x+5],isleTop[x+5])>yb+6)ctx.drawImage(SPR.sail,x,yb);
   }
   { // a steamship crossing the bay (one per coast stretch)
     const cyc=BL*NB*0.12,start=(loopAt(COAST)+BL*0.3)*0.12,k0=Math.floor((o2-start)/cyc);
     for(let k=k0;k<=k0+1;k++){
       const sx=Math.round(start+k*cyc+time*4-o2),sy=hz+4;
-      if(sx>=0&&sx+16<W&&seaMask[sx]&&seaMask[sx+15]&&topBuf[sx]>sy+7&&topBuf[sx+15]>sy+7&&seaBot[sx]>sy+8&&seaBot[sx+15]>sy+8){
+      if(sx>=0&&sx+16<W&&seaMask[sx]&&seaMask[sx+15]&&Math.min(topBuf[sx],isleTop[sx])>sy+7&&Math.min(topBuf[sx+15],isleTop[sx+15])>sy+7){
         ctx.drawImage(SPR.ship,sx,sy);
         ctx.fillStyle='rgba(90,90,90,.5)';for(let q=0;q<3;q++){const ph=(time*0.5+q/3)%1;ctx.fillRect(sx+8-Math.round(ph*8),sy-2-Math.round(ph*8),2,2);}
       }
@@ -1349,7 +1344,7 @@ function drawBackdrop(){
   }
   ctx.fillStyle='#ffffff';const tq=Math.floor(time*3);
   for(let k=0;k<30;k++){if(hash(k,tq+SEED)<0.5)continue;const x=Math.floor(hash(k*7,tq)*W),y=hz+2+Math.floor(hash(k*13,tq)*(H-hz));
-    if(seaMask[x]&&y<topBuf[x]&&y<seaBot[x]-1)ctx.fillRect(x,y,2,1);}
+    if(seaMask[x]&&y<topBuf[x])ctx.fillRect(x,y,2,1);}
   // the Matterhorn
   if(Math.abs(o2+W/2-MX)<W/2+60){
     for(let i=0;i<W;i++){
@@ -1381,30 +1376,28 @@ function drawBackdrop(){
     break;
   }
   // atmospheric haze: the distant layers fade towards the horizon colour
-  for(let i=0;i<W;i++)topBuf[i]=Math.min(backTop[i],topBuf[i],seaMask[i]?hz:H);
+  for(let i=0;i<W;i++)topBuf[i]=Math.min(backTop[i],topBuf[i],isleTop[i],seaMask[i]?hz:H);
   haze(topBuf,0.18);
   // morning mist in the forest
   ctx.fillStyle='#e8f2ea';
   for(let i=0;i<W;i++){const m=mistBuf[i];if(m<0.05)continue;ctx.globalAlpha=0.3*Math.round(m*4)/4;ctx.fillRect(i,base-6,1,4);}
   ctx.globalAlpha=1;
   // --- mid layer (parallax 0.35) ---
-  const mb=Math.round(Hc+11+clamp(camYi*0.1,-20,22)),o3=Math.floor(camXi*0.35);
+  const mb=Math.round(Hc+11+clamp(camYi*0.1,-20,22)),o3=Math.floor(camXi*0.35),midSink=H-mb+50;
   for(let i=0;i<W;i++){
     const fx=i+o3;biome(fx/0.35);
-    const A=bA,B=bB,t=bT;buf[i]=0;midTop[i]=mb;
-    {const wA=envOut(t),wB=envIn(t);ctx.fillStyle=rgbc(mix(MIDC[A],MIDC[B],wB/Math.max(0.001,wA+wB)));ctx.fillRect(i,mb,1,H-mb);}
-    for(let k=0;k<2;k++){
+    const A=bA,B=bB,t=bT;buf[i]=0;midTop[i]=H;midVis[i]=A;
+    for(let k=1;k>=0;k--){ // incoming first; the outgoing hills sink away behind the foreground
       const b=k?B:A,e=k?envIn(t):envOut(t);
-      if(e<=0.001)continue;
+      if(e<=0)continue;
       let raw=midProf(b,fx),hill=midHill(b,fx);
       let lake=0;
       if(b===ALPS||b===FOREST){lake=(b===ALPS?lakeK(fx):fLakeK(fx))*sstep(0.6,1,e);const lv=b===ALPS?6:13;if(lake>0){raw=lerp(raw,lv,lake);hill=lerp(hill,lv,lake);}}
-      const h=raw*e;if(h<0.5)continue;
-      const hy=mb-Math.round(hill*e);
-      if(hy>buf[i])buf[i]=mb-hy;
-      const y=mb-Math.round(h);if(y<midTop[i])midTop[i]=y;
+      const sk=sinkBy(e,midSink,fx,8,SEED+1181+b*3),y=mb-Math.round(raw-sk);if(y>=H)continue;
+      const hy=mb-Math.round(hill-sk);
+      if(y<=midTop[i]){midTop[i]=y;buf[i]=mb-hy;midVis[i]=b;} // the surface that shows: landmarks stand on it
       const col=MIDC[b];
-      ctx.fillStyle=rgbc(col);ctx.fillRect(i,y,1,mb-y+1);
+      ctx.fillStyle=rgbc(col);ctx.fillRect(i,y,1,H-y);
       if(b===FOREST){ // crTone was set by midProf above
         if(hy>y+0.5){ctx.fillStyle=rgbc(FTONE[crTone]);ctx.fillRect(i,y,1,hy-y+1);} // individual tree crowns
         else if(lake<0.5){ctx.fillStyle='#4c8a56';ctx.fillRect(i,y,1,2);}}        // meadow in the clearings
@@ -1424,12 +1417,12 @@ function drawBackdrop(){
   for(let c=c0;c<=c1;c++){
     const lx=c*90+hash(c,SEED+192)*50,x=Math.round(lx-o3);if(x<0||x>=W)continue;
     biome(lx/0.35);
-    const tz=bT>0.3&&bT<0.7,eA=envOut(bT),eB=envIn(bT),b=eA>=eB?bA:bB,e=Math.max(eA,eB);
+    const tz=bT>0.3&&bT<0.7,b=midVis[x],e=b===bA?envOut(bT):envIn(bT);
     if(hash(c,SEED+191+(tz?10:b))>0.4)continue;
     if(b===ALPS&&lakeK(lx)>0.05)continue;
     const y=mb-Math.round(buf[x]);
     if(tz&&bA===FOREST){ctx.fillStyle='#6e7a3a';ctx.fillRect(x,y-6,1,6);ctx.fillRect(x-4,y-7,9,1);ctx.fillRect(x-3,y-8,7,1);}
-    else if(e<0.6)continue;
+    else if(e<0.99)continue; // nothing on sinking hills
     else if(b===ALPS){
       ctx.fillStyle='#c9a27a';ctx.fillRect(x-3,y-4,7,4);
       ctx.fillStyle='#7d3f27';ctx.fillRect(x-4,y-5,9,1);ctx.fillRect(x-3,y-6,7,1);ctx.fillRect(x-1,y-7,3,1);
