@@ -25,18 +25,23 @@ Start in **Aachen** and ride a road bike with a kid trailer through a **forest**
 - **In the air, PEDAL turns the bike clockwise (frontflip) and BRAKE turns it counter-clockwise (backflip)**, while held. The rotation starts gently and speeds up over 0.3 seconds to full speed, so small corrections are easy; a full flip takes about 0.9 seconds. It stops as soon as you let go. Flipping only switches on once the wheels are off the ground by 6 px, so bumps in the road don't flip the bike. On a real jump, let go of PEDAL unless you want to flip.
 - **Slam:** hold both buttons in the air close to the ground and the bike dives down with its wheels along the slope. After a real jump that adds a short speed boost on landing. A slam can be used again 3 seconds after the last one.
 - **Close call:** skim past the ground upside down in the air, with the rider's head less than 1 metre (12 px) from it, and land: *CLOSE CALL* gives 60 to 200 points (the closer, the more) and charges the boost. Touch the ground with the head and it's a crash, of course.
+- **Gaps:** every biome after Aachen has 1–2 bottomless gaps between rocky cliffs (in the desert and the Alps, one of them is a mega gap, see below). A yellow warning sign stands 35 m before each one, and from 90 m out a **GAP AHEAD** box at the top counts down the distance (with *SPEED UP!* below 50 km/h). A kicker throws you over and you land on a slightly lower downslope. Keep pedalling up the kicker and you clear it easily; roll in too slowly and you drop out of sight, and the ride is over. Clearing a gap gives *GAP JUMP* (+100); a flip over a gap counts double (*GAP BACKFLIP* +300 per flip).
+- **Mega gaps:** once in every desert and Alps stretch, a ski-jump-sized gap (34 m) — in the Alps right in front of the Matterhorn. The hills rise gently for a while and calm down, then a short in-run and a steep kicker launch you into about **3 seconds of air**: enough for **three backflips**. A mega flight floats more than a normal jump (less gravity and air drag), the camera looks down into the drop, and the kicker trims extra speed so every rider fits the landing hill, which is shaped after the flight. The HUD warns 150 m ahead (*MEGA GAP*). Clearing one gives *MEGA GAP JUMP* (+400); flips over it give +500 each (*MEGA GAP 3X BACKFLIP* +1500). Land with the nose well down: the landing hill is steep.
+- **Bridges:** 1–2 per forest and coast stretch, up to one per desert and Alps stretch: stone viaducts in the Alps and forest, wooden trestles in the forest, desert and coast. You just ride across.
 - **Land with your wheels parallel to the slope** for a *PERFECT LANDING*: a speed burst plus a few seconds of extra drive. Perfect landings in a row build a combo (×2, ×3 …) with ever bigger boosts.
 - **Good landings** give a small push and keep your combo. **Rough** and **sloppy** landings cost speed and reset the combo.
 - **Flips, big air and perfect landings** charge the boost meter.
 - **Boost:** for 5 seconds a teammate in a black, colourfully flecked kit pushes the trailer and keeps the bike steady.
-- **Keep Cleo asleep:** Cleo sleeps in the trailer as long as the bike rolls. Drop below **40 km/h** and she starts to stir; after 2 seconds a 3-second countdown starts, and getting back up to speed stops it. If it runs out, Cleo wakes up screaming and the ride is over. The rule starts once the ride is under way (at 40 km/h, or 8 seconds after the start), so pulling away is safe.
-- **Game over** when the rider's head touches the ground, or when Cleo wakes up. The high score is saved on your device.
+- **Keep Cleo asleep:** Cleo sleeps in the trailer as long as the bike rolls. Drop below **40 km/h** and she starts to stir: after half a second *SPEED UP! CLEO STIRS* appears, and after 2 seconds a 3-second countdown starts. Getting back up to speed stops it. The warning stays on screen for a moment after you're fast again, so it doesn't flicker when your speed hovers around 40. If it runs out, Cleo wakes up screaming and the ride is over. The rule starts once the ride is under way (at 40 km/h, or 8 seconds after the start), so pulling away is safe.
+- **Game over** when the rider's head touches the ground, when you fall into a gap, or when Cleo wakes up. The high score is saved on your device.
 
 ### Levels
 
 Every ride is a level with two to five goals. A card at the start lists them. A checklist on the left then shows your progress for a few seconds and pops up again briefly whenever a goal moves on. Pause the game (**II** or P) to see all goals, your progress and your hearts. Reach them all, land, and the rider sits up and celebrates — the next level is unlocked (saved on your device). Then choose **KEEP RIDING** (left half of the screen, or R) to carry on with the same ride, or **NEXT LEVEL** (right half, or Space).
 
 A crash before the goals are done costs one of your **3 hearts** (shown next to the boost bar) and you retry the level. **Goals you have already reached stay reached** for the next tries (shown in green on the start card, and saved on your device), so you only need to do the missing ones; the score goal counts the points of a single ride. Hearts carry over from level to level. Lose the last one and you start the **same level** over, with 3 fresh hearts and all of its goals reset. Crashing after a completed level, or in free ride, costs nothing.
+
+The gap goals count gaps jumped in one ride; a level's distance goal may be done before the next gap comes, so keep riding until it does. The goal lists changed when gaps were added, so goals kept from earlier tries were reset once.
 
 The levels also lead you through the world: levels 1–2 stay in Aachen, level 3 takes you into the forest, level 6 into the desert, level 8 to the coast, and level 10 all the way to the Alps, the furthest biome. A **reach** goal counts once the new biome has fully taken over after its transition zone.
 
@@ -45,13 +50,13 @@ The levels also lead you through the world: levels 1–2 stay in Aachen, level 3
 | 1 | Ride 250 m · 1 backflip | Aachen |
 | 2 | Ride 400 m · 1 frontflip · 2 perfect landings · score 1000 | Aachen (Eifel hills) |
 | 3 | Reach the forest (495 m) · 3 backflips · 1 slam · score 1500 | Forest |
-| 4 | Ride 800 m · perfect combo ×3 · big air 1.2 s · score 2500 | Forest |
+| 4 | Ride 800 m · perfect combo ×3 · jump 1 gap · score 2500 | Forest |
 | 5 | Ride 1100 m · 2 backflips · 2 frontflips · use the boost once · score 4000 | Forest |
-| 6 | Reach the desert (1470 m) · 3 slams · reach 90 km/h · score 6500 | Desert |
-| 7 | Ride 1950 m · perfect combo ×4 · big air 1.4 s · 3 frontflips · score 10000 | Desert |
+| 6 | Reach the desert (1470 m) · 3 slams · reach 90 km/h · jump 2 gaps · score 6500 | Desert |
+| 7 | Ride 1950 m · perfect combo ×4 · big air 1.4 s · a flip over a gap · score 10000 | Desert |
 | 8 | Reach the coast (2445 m) · 5 backflips · 5 frontflips · boost twice · score 15000 | Coast |
-| 9 | Ride 2950 m · perfect combo ×5 · reach 110 km/h · big air 1.6 s · score 25000 | Coast |
-| 10 | Reach the Alps (3420 m) · a double flip in one jump · perfect combo ×6 · 4 slams · score 50000 | Alps |
+| 9 | Ride 2950 m · perfect combo ×5 · reach 110 km/h · jump 3 gaps · score 25000 | Coast |
+| 10 | Reach the Alps (3420 m) · a double flip in one jump · 2 flips over gaps · 4 slams · score 50000 | Alps |
 
 After level 10 a congratulations screen with fireworks celebrates the whole tour from Aachen to the Matterhorn, and **free ride** (no goals) unlocks. On the title screen, pick any unlocked level with ← / → or by tapping the left or right edge of the screen.
 
@@ -117,7 +122,7 @@ Everything is drawn in code on a low-resolution canvas and scaled up with crisp 
 ### How it works (tech overview)
 
 - **Physics:** a rigid body with two spring-damper wheel contacts on a procedural height function, integrated at a fixed 240 Hz step. The trailer is a separate point that follows the hitch, rests on the ground, and is constrained to stay behind the bike. It has no physical effect on the bike.
-- **Terrain:** layered value noise per biome. It uses domain warping, so hills bunch up and spread out irregularly, plus kicker ramps. A gentle start zone and a capped difficulty ramp keep it fair, and a grip assist helps on steep climbs.
+- **Terrain:** layered value noise per biome. It uses domain warping, so hills bunch up and spread out irregularly, plus kicker ramps. Gaps and bridges are laid over it: around each one the ground blends into a levelled runway (at the mean height of the area, so the blends stay gentle), with a kicker and a landing for a gap. The wheels ignore the ravine walls, and a wheel deep in the ravine means the bike falls in. A gentle start zone and a capped difficulty ramp keep it fair, and a grip assist helps on steep climbs.
 - **Biomes:** every ride starts in **Aachen** (6,000 px, shorter than the other biomes and never repeated: cobblestones, rows of town houses, Printen stalls, the Elisenbrunnen at the start, and the Dom, Rathaus and SuperC on the skyline), then crosses Eifel-like hills into the forest. From there Forest, Desert, Coast and Alps repeat in a loop. Each is 11,700 px long and ends in a 1,900 px transition zone: foothills, savanna, beach dunes and a lakeside meadow.
 - **Climate values:** underneath the biomes, the world is described by a few values that drift smoothly along the track: how mountainous, moist, hot, close to the sea and urban it is. Ground colours, snow, ground details and scenery are computed from these values, so regions blend without seams and small sub-regions (a drier patch, a higher ridge) appear inside a biome. See `WORLD_GENERATION.md`.
 - **Backgrounds:** three parallax layers. Mountains use ridged multifractal noise, the canyon uses terraced profiles with irregular rock layers, and the forest uses rows of tree crowns. In transitions each biome's scenery shrinks away while the next one rises, and a shared base colour blends underneath. Headlands and a diagonal shoreline frame the sea.
@@ -186,7 +191,7 @@ Roughly in order of impact:
 ### World
 - **Weather and time of day:** snow flurries in the Alps, heat haze in the canyon, a sunset run at the coast.
 - **Poisson-disc sampling** for even more natural scenery spacing. More landmarks: a cable car, a waterfall, a pier, a lighthouse you ride past.
-- Rare **"set-piece" sections** (bridge over a gorge, a forest boardwalk) built from hand-placed terrain pieces between the procedural parts.
+- More **set pieces** besides the gaps and bridges, e.g. a forest boardwalk or a covered bridge.
 
 ### Technical
 - **Offline play:** a small service worker so the game (and font) works without internet after the first visit.

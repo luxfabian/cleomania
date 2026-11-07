@@ -170,13 +170,93 @@ function hb(b,x){
   return 19*noise(x/240,s+31)+6*noise(x/75,s+32)+28*noise(x/1000,s+33);
 }
 function rampsOf(b,x){return b===ALPS?rampF(x,SEED+15,0.3):b===FOREST?rampF(x,SEED+45,0.45):b===DESERT?rampF(x,SEED+25,0.35):b===AACHEN?rampF(x,SEED+55,0.45):rampF(x,SEED+35,0.6);}
-function terrainH(x){
+function terrainBase(x){ // the hills and kickers, before gaps and bridges
   const m=sstep(150,900,x)*(0.85+Math.min(x/40000,0.35));
   if(m===0)return 0;
   biome(x);let h=hb(bA,x),r=rampsOf(bA,x);if(bT>0){h=lerp(h,hb(bB,x),bT);r=lerp(r,rampsOf(bB,x),bT);}
   return h*m+r*Math.min(1,m*2);
 }
+// gaps and bridges: along the loop (never in Aachen) every biome has 1-2 gaps to jump and 1-2 bridges, in four slots.
+// Around each the ground is levelled to a runway. A gap has a kicker in front and a slightly lower landing behind;
+// a gap drops away without a bottom; a bridge spans a ravine with water, and its deck is the ground.
+const KL=64,LL=120,RUN=340,RUN2=480,FBL=380,FBL2=520; // kicker, landing; levelled runway and blend into the hills before and after (longer: you land fast)
+const GAPW=[84,62,72,78];           // gap width by biome (ALPS, FOREST, DESERT, COAST), +0..12, +6 after the first loop
+const WATER=[[92,170,216],[63,143,174],[63,163,160],[47,149,216]];
+// mega gaps, one per desert and Alps stretch, built like a ski jump: the hills rise for a while, a runway, a downhill in-run,
+// a steep kicker, a bottomless gap, then a landing hill shaped after the flight (the nominal flight lasts MEGA_T: room for
+// three backflips), its outrun, and the hills climbing back. The rise before and the climb after share the drop.
+// A flight like that needs more float than the game's gravity and drag allow, so a mega flight has its own (MEGA_G, MEGA_K).
+const MLA=2600,MIR=300,MRUN=300,MNR=MIR+MRUN+FBL,MDI=20,MKL=80,MKH=34,MC0=30,MOUT=300; // rise/climb, in-run, runway, near zone, in-run drop, kicker, hill below the flight at the gap, outrun
+const MEGA_V=220,MEGA_T=3.0,MEGA_G=0.38,MEGA_K=0.2; // nominal take-off speed (px/s), air time; gravity and air drag in a mega flight
+function megaPath(){ // the nominal flight from the lip, with the bike's gravity and air drag: height per px across
+  const a=Math.atan(2*MKH/MKL),dt=1/240;let vx=MEGA_V*Math.cos(a),vy=MEGA_V*Math.sin(a),x=0,y=0,t=0;const P=[0];
+  while(t<MEGA_T){const sp=Math.hypot(vx,vy),px=x,py=y;vx-=MEGA_K*DRAG*vx*sp*dt;vy-=(MEGA_G*G+MEGA_K*DRAG*vy*sp)*dt;x+=vx*dt;y+=vy*dt;t+=dt;
+    while(P.length<=x)P.push(lerp(py,y,(P.length-px)/(x-px)));}
+  return {P:Float32Array.from(P),sL:vy/vx};
+}
+let featSeed=-1;const featCache=new Map(),bridgeImg=new Map();
+function featsOf(sg){ // the gaps and bridges of loop segment sg, from left to right
+  if(featSeed!==SEED){featSeed=SEED;featCache.clear();bridgeImg.clear();}
+  let F=featCache.get(sg);if(F)return F;F=[];featCache.set(sg,F);
+  if(sg<0)return F;
+  const b=(sg+LOOP0)%NB,s0=AL+sg*BL,mega=b===DESERT||b===ALPS;
+  const meanH=(lo,hi)=>{let m=0;for(let k=0;k<=20;k++)m+=terrainBase(lerp(lo,hi,k/20))/21;return Math.round(m);}; // the mean height: gentle blends
+  const add=(k,gap,x0)=>{ // a normal gap or bridge
+    const r=hash(sg*4+k,SEED+804),w=gap?GAPW[b]+Math.round(12*r)+(sg>=NB?6:0):110+Math.round(90*r);
+    const lo=x0-RUN-FBL,hi=x0+w+RUN2+FBL2,hR=meanH(lo,hi),style=b===ALPS||(b===FOREST&&r<0.5)?'stone':'wood';
+    F.push({x0,w,gap,hR,b,style,kh:gap?22:0,kl:gap?10:0,D:gap?0:42+Math.round(10*r),lo,hi,rimLo:hR+(gap?10:0),
+            busyLo:x0-(gap?KL+30:20),busyHi:x0+w+(gap?LL:20)});
+  };
+  if(mega){ // the mega gap in the middle, and one more gap or bridge near the end
+    const {P,sL}=megaPath(),x0=Math.round(s0+BL*0.4+(hash(sg,SEED+806)-0.5)*300);
+    let ap=0;for(let i=1;i<P.length;i++)if(P[i]>P[ap])ap=i;
+    let w=ap;while(w<P.length-1&&P[w]>-10)w++;                  // the gap ends after the top of the flight, 10 px below the lip
+    const xL=P.length-1,Lc=Math.round(clamp(260*Math.abs(sL),200,420)),drop=-(P[xL]+sL*Lc/2),A=Math.round((drop-MKH)/2);
+    const lo=x0-MNR-MLA,hi=x0+xL+Lc+MOUT+FBL+MLA,hR=meanH(lo,hi);
+    F.push({x0,w,gap:true,mega:true,hR,b,A,B:Math.round(drop-MKH-A),P,xL,sL,Lc,kh:MKH,lo,hi,rimLo:hR+A+MKH+P[w]-MC0,
+            busyLo:x0-MIR-40,busyHi:x0+xL+Lc+MOUT});
+    add(3,hash(sg,SEED+807)<0.4,Math.round(s0+BL*0.84));
+  }else{ // four slots, shuffled between gaps and bridges
+    const nG=1+(hash(sg,SEED+801)<0.5?1:0),nB=1+(hash(sg,SEED+802)<0.4?1:0);
+    [0,1,2,3].sort((p,q)=>hash(sg*4+p,SEED+803)-hash(sg*4+q,SEED+803)).slice(0,nG+nB)
+      .forEach((k,i)=>add(k,i<nG,Math.round(s0+BL*(0.13+0.22*k)+(hash(sg*4+k,SEED+805)-0.5)*600)));
+  }
+  return F.sort((p,q)=>p.x0-q.x0);
+}
+function featAt(x,m=0){ // the gap or bridge whose ground (widened by m) contains x
+  for(const f of featsOf(segOf(x)))if(x>f.lo-m&&x<f.hi+m)return f;
+  return null;
+}
+function ravineAt(x){const f=featAt(x);return f&&x>=f.x0&&x<=f.x0+f.w?f:null;}
+function nextGap(x){ // the next gap that isn't behind x yet
+  for(let sg=Math.max(0,segOf(x));sg<=segOf(x)+1;sg++)for(const f of featsOf(sg))if(f.gap&&f.x0+f.w>x)return f;
+  return null;
+}
+function megaH(f,u,h){ // the ground around a mega gap (h: the hills there)
+  if(u<0){
+    if(u<-MIR)return lerp(h,f.hR,sstep(-MNR-MLA*0.6,-MNR+FBL,u))+f.A*sstep(-MNR-MLA,-MNR,u)+MDI*sstep(-MNR,-MNR+FBL,u); // the hills rise and calm down
+    if(u<-MKL)return f.hR+f.A+MDI*(1-sstep(-MIR,-MKL,u));                // the in-run
+    const k=(u+MKL)/MKL;return f.hR+f.A+MKH*k*k;                          // the kicker
+  }
+  if(u<=f.w)return f.hR-1e4;
+  const lip=f.hR+f.A+MKH;
+  if(u<=f.xL){const i=Math.floor(u),y=lerp(f.P[i],f.P[Math.min(i+1,f.xL)],u-i);const c=(f.xL-u)/(f.xL-f.w);return lip+y-MC0*c*c;} // the landing hill, meeting the flight at xL
+  const v=u-f.xL;
+  if(v<f.Lc)return lip+f.P[f.xL]+f.sL*v-f.sL/(2*f.Lc)*v*v;               // curving into the outrun
+  const v2=v-f.Lc-MOUT;
+  if(v2<0)return f.hR-f.B;
+  return lerp(f.hR,h,sstep(0,FBL+MLA*0.6,v2))-f.B*(1-sstep(FBL,FBL+MLA,v2)); // the hills come back and climb
+}
+function terrainH(x){
+  const h=terrainBase(x),f=featAt(x);if(!f)return h;
+  const u=x-f.x0;
+  if(f.mega)return megaH(f,u,h);
+  if(u<0){let t=f.hR;if(u>-KL){const k=(u+KL)/KL;t+=f.kh*k*k;}return lerp(h,t,sstep(-RUN-FBL,-RUN,u));}
+  if(u>f.w){const v=u-f.w;let t=f.hR;if(v<LL)t+=f.kl*(1+Math.cos(Math.PI*v/LL))/2;return lerp(h,t,1-sstep(RUN2,RUN2+FBL2,v));}
+  return f.gap?f.hR-1e4:f.hR; // a bottomless gap, or the bridge deck
+}
 const slope=x=>terrainH(x+0.5)-terrainH(x-0.5);
+const WALL=4; // steeper than this is a ravine wall: wheels don't touch it (they fall in, or roll off the lip)
 
 // ================= sprites =================
 const PAL={d:'#1e5a2c',g:'#2f7d3a',G:'#5cb85c',t:'#7a4a28',T:'#4a2d1a',l:'#c3c8cf',r:'#8a8f98',R:'#5f646d',
@@ -565,6 +645,37 @@ const KIND=new Map();
 [SPR.chalet,SPR.hut,SPR.tower,SPR.fence,SPR.umbrella,SPR.arch,SPR.cabin,SPR.stall].forEach(s=>KIND.set(s,'build'));
 [SPR.cow,SPR.deer,SPR.camel].forEach(s=>KIND.set(s,'animal'));
 [SPR.pine,SPR.pineS,SPR.fir,SPR.oak,SPR.palm,SPR.acacia,SPR.birch,SPR.cactus,SPR.hoodoo].forEach(s=>KIND.set(s,'tree'));
+// gaps and bridges
+const MASON=(i,j)=>j%4===3||(i+((j>>2)&1)*3)%6===5?-1:0; // ashlar courses
+HM.ashlar=mat(['#3c3f46','#6d7179','#8f939b','#a9adb4','#c6cad0'],MASON,{soft:1});
+HM.ashlarB=mat(['#3e3428','#6e5e4a','#8c7a62','#a6937a','#c2b096'],MASON,{soft:1});
+SPR.gapSign=art(11,19,P=>{ // warning sign some way before a gap: a yellow diamond with '!' on a post
+  const Y=mat(['#4a3a08','#b88a14','#f0c020','#ffd840','#fff09a'],null),K=flat('#1e1a14');
+  P.rect(5,9,2,10,HM.grey);
+  P.poly([[5.5,0],[11,5.5],[5.5,11],[0,5.5]],K);P.poly([[5.5,1.4],[9.6,5.5],[5.5,9.6],[1.4,5.5]],Y);
+  P.rect(5,3,1,4,K);P.rect(5,8,1,1,K);
+});
+function bridgeArt(f){ // the bridge over f's ravine at 1:1: deck top in row 6, piers down into the water, 8 px abutments each side
+  const ab=8,P=6,w=f.w+2*ab,h=P+f.D+3;
+  return art(w,h,A=>{
+    if(f.style==='stone'){ // a masonry viaduct with round arches and a parapet
+      const S=f.b===ALPS?HM.ashlar:HM.ashlarB;
+      A.rect(0,1,w,h-1,S);
+      const n=Math.max(1,Math.round(f.w/60)),pier=8,span=(f.w-(n-1)*pier)/n;
+      for(let k=0;k<n;k++){const ax=ab+k*(span+pier),rx=span/2,ry=Math.min(rx,h-P-10),sy=P+7+ry;
+        A.ell(ax+rx,sy,rx,ry,null);A.rect(Math.ceil(ax),Math.floor(sy),Math.floor(span),h,null);}
+      A.rect(0,0,w,1,S,1);A.rect(0,P,w,1,S,-1); // coping on the parapet, the deck's edge
+    }else{ // a wooden trestle: plank deck, railing, posts with cross braces
+      A.rect(0,P,w,3,HM.wood);
+      A.rect(0,1,w,1,HM.wood);A.rect(0,3,w,1,HM.wood);
+      for(let x=1;x<w;x+=7)A.rect(x,1,1,P-1,HM.woodV);
+      const n=Math.max(2,Math.round(f.w/28)),dx=f.w/n;
+      for(let k=0;k<=n;k++){const x=Math.round(ab+k*dx)-1;A.rect(x,P+3,2,h-P-3,HM.woodV);
+        if(k<n){const x2=Math.round(ab+(k+1)*dx)-1;for(let y=P+3;y+12<h;y+=12){A.line(x+1,y,x2,y+12,HM.wood);A.line(x2,y,x+1,y+12,HM.wood);}}}
+      for(let y=P+15;y<h-2;y+=12)A.rect(ab,y,f.w,1,HM.wood);
+    }
+  });
+}
 const TINY=new Set([SPR.flowers,SPR.mush,SPR.fern,SPR.bgrass,SPR.crab,SPR.skull,SPR.stump,SPR.log,SPR.drift,SPR.tumble,SPR.drybush,SPR.barrel]); // ground clutter: only a little bigger than before
 
 // ================= constants & state =================
@@ -579,6 +690,8 @@ let slam=false,slamCD=0,airOK=false,flipT=0,flipDir=0,boost=0,boostOn=0,airT=0,a
 let popups=[],parts=[],banner=null,pusher;
 const WAKE_KMH=40,WAKE_GRACE=2,WAKE_T=3; // Cleo sleeps while the bike rolls: below 40 km/h she stirs, 2 s later a 3 s countdown starts, then she wakes up and the ride is over
 let napT=0,napArmed=false,wakeT=-1,overWhy='',napTold=false; // seconds too slow, armed once the ride is under way, seconds since she woke
+let napWarn=0,napHold=0,napMsg=''; // the warning fades in, stays a while after the speed is back, then fades out: no flicker
+let fallF=null,fallCam=0,takeX=0,megaAir=null; // ...; the mega gap being flown over  // the gap the bike fell into, where the camera stopped; where the bike last took off
 let hi=0;try{hi=+localStorage.getItem('cleomania_hi')||0;}catch(e){}
 // developer switches in the URL: ?debug (overlay, [ ] to jump), &x=15000 (start there), &seed=7, &still (no physics), &level=5
 const DBG=(()=>{const q=new URLSearchParams(location.search);
@@ -594,13 +707,13 @@ const LEVELS=[
  [['dist',250],['back',1]],                                              // Aachen
  [['dist',400],['front',1],['perfect',2],['score',1000]],                 // Aachen
  [['reach',reachM(FOREST)],['back',3],['slam',1],['score',1500]],        // 495 m
- [['dist',800],['combo',3],['air',1.2],['score',2500]],                  // Forest
+ [['dist',800],['combo',3],['gap',1],['score',2500]],                   // Forest: the first gaps
  [['dist',1100],['back',2],['front',2],['boost',1],['score',4000]],      // Forest
- [['reach',reachM(DESERT)],['slam',3],['speed',90],['score',6500]],      // 1470 m
- [['dist',1950],['combo',4],['air',1.4],['front',3],['score',10000]],     // Desert
+ [['reach',reachM(DESERT)],['slam',3],['speed',90],['gap',2],['score',6500]], // 1470 m
+ [['dist',1950],['combo',4],['air',1.4],['gapflip',1],['score',10000]],  // Desert
  [['reach',reachM(COAST)],['back',5],['front',5],['boost',2],['score',15000]], // 2445 m
- [['dist',2950],['combo',5],['speed',110],['air',1.6],['score',25000]],   // Coast
- [['reach',reachM(ALPS)],['multi',2],['combo',6],['slam',4],['score',50000]], // 3420 m
+ [['dist',2950],['combo',5],['speed',110],['gap',3],['score',25000]],    // Coast
+ [['reach',reachM(ALPS)],['multi',2],['gapflip',2],['slam',4],['score',50000]], // 3420 m
 ];
 const FREE=LEVELS.length+1,pl=(n,w)=>n+' '+w+(n>1?'S':'');
 // [full label (level intro), current value, short line with progress (in-ride checklist)]
@@ -620,6 +733,8 @@ const GOAL={
  score:  [n=>'SCORE '+n+' POINTS',         ()=>score(),    (v,n)=>'SCORE '+Math.min(v,n)+'/'+n],
  multi:  [n=>n===2?'DOUBLE FLIP (ONE JUMP)':n+'X FLIP (ONE JUMP)',()=>st.multi,(v,n)=>n===2?'DOUBLE FLIP':n+'X FLIP'],
  close:  [n=>pl(n,'CLOSE CALL'),         ()=>st.close,   (v,n)=>cnt('CLOSE CALL',v,n)],
+ gap:    [n=>'JUMP '+n+' GAP'+(n>1?'S':''),()=>st.gap,     (v,n)=>cnt('GAP',v,n)],
+ gapflip:[n=>n>1?n+' FLIPS OVER GAPS':'FLIP OVER A GAP',()=>st.gapflip,(v,n)=>cnt('GAP FLIP',v,n)],
 };
 let unlocked=1;try{unlocked=Math.min(FREE,Math.max(1,+localStorage.getItem('cleomania_level')||1));}catch(e){}
 if(DBG.level)unlocked=Math.max(unlocked,Math.min(FREE,DBG.level));
@@ -641,8 +756,8 @@ const pusherWho=()=>rider==='man'?'woman':'man';
 const goals=()=>LEVELS[level-1]||[];
 const goalDone=([k,n])=>GOAL[k][1]()>=n;
 // goals reached in an earlier try of a level stay reached (also after a reload) until the level is done or the hearts run out
-let kept={};try{const v=JSON.parse(localStorage.getItem('cleomania_kept'));if(v&&typeof v==='object')kept=v;}catch(e){}
-const saveKept=()=>{try{localStorage.setItem('cleomania_kept',JSON.stringify(kept));}catch(e){}};
+let kept={};try{const v=JSON.parse(localStorage.getItem('cleomania_kept2'));if(v&&typeof v==='object')kept=v;}catch(e){}
+const saveKept=()=>{try{localStorage.setItem('cleomania_kept2',JSON.stringify(kept));}catch(e){}};
 const isKept=i=>Array.isArray(kept[level])&&kept[level].includes(i);
 function keepGoal(i){(kept[level]=Array.isArray(kept[level])?kept[level]:[]).push(i);saveKept();}
 function clearKept(){delete kept[level];saveKept();}
@@ -657,15 +772,15 @@ function reset(){
   popups=[];banner=null;
   pusher={on:false,a:0,phase:0,leave:null,hand:{x:0,y:0},gT:0};
   input.gas=input.brake=false;
-  st={back:0,front:0,perfect:0,combo:0,air:0,slam:0,boost:0,speed:0,multi:0,close:0};winT=0;introT=0;
+  st={back:0,front:0,perfect:0,combo:0,air:0,slam:0,boost:0,speed:0,multi:0,close:0,gap:0,gapflip:0};winT=0;introT=0;
   levelDone=false;goalsT=0;goalSig=''; // this ride's statistics for the goals
-  napT=0;napArmed=false;wakeT=-1;overWhy='';
+  napT=0;napArmed=false;wakeT=-1;overWhy='';napWarn=napHold=0;
   maxX=60;place(60);
   updButtons();
 }
 function place(x){ // put the bike (standing still) at world x
   const gy=Math.max(terrainH(x-11),terrainH(x+11)),tx=x-11-ARM;
-  bike={x,y:gy+12.5,vx:0,vy:0,a:0,w:0};
+  bike={x,y:gy+12.5,vx:0,vy:0,a:0,w:0};fallF=null;megaAir=null;
   wheels=[{ox:-11,oy:-7,r:5.5,c:true,vt:0,om:0,spin:0},{ox:11,oy:-7,r:5.5,c:true,vt:0,om:0,spin:0}];
   tr={x:tx,y:terrainH(tx)+TR_R,px:tx,py:terrainH(tx)+TR_R,g:true,spin:0};
   cam.x=bike.x-W*0.3;cam.y=bike.y;lead=0;
@@ -677,16 +792,19 @@ function place(x){ // put the bike (standing still) at world x
 function rearAxle(){const ca=Math.cos(bike.a),sa=Math.sin(bike.a);return [bike.x-11*ca+7*sa,bike.y-11*sa-7*ca];}
 
 function phys(dt){
+  if(fallF)return fallPhys(dt);
   const b=bike,live=state==='play';
   const gas=live&&input.gas,brk=(live&&input.brake)||state==='win'; // celebrating: coast to a stop
   const [fF,fP]=rider==='woman'?[1.05,1.14]:[1,1]; // easter egg: she's 5% faster (1.14x power = +5% top speed against drag and rolling)
   let ca=Math.cos(b.a),sa=Math.sin(b.a);
-  let fx=0,fy=-G,tq=0,any=false,gtx=1,gty=0,clr=1e9; // clr: lowest wheel's height above the ground
+  const gk=megaAir?MEGA_G:1,dk=megaAir?MEGA_K:1;
+  let fx=0,fy=-G*gk,tq=0,any=false,gtx=1,gty=0,clr=1e9; // clr: lowest wheel's height above the ground
   slamCD=Math.max(0,slamCD-dt);
   for(let i=0;i<2;i++){
     const wh=wheels[i];
     const rx=wh.ox*ca-wh.oy*sa,ry=wh.ox*sa+wh.oy*ca,cx=b.x+rx,cy=b.y+ry;
     const gy=terrainH(cx),sl=slope(cx),nl=Math.hypot(1,sl),nx=-sl/nl,ny=1/nl;
+    if(Math.abs(sl)>WALL){wh.c=false;continue;}
     const pen=wh.r-(cy-gy)*ny;
     wh.c=pen>-0.4;clr=Math.min(clr,-pen);
     if(pen>0){
@@ -714,7 +832,7 @@ function phys(dt){
   if(gas)crank-=dt*(wheels[0].c?Math.max(5,wheels[0].vt/5.5*0.55):10);
 
   const sp=Math.hypot(b.vx,b.vy);
-  fx-=DRAG*b.vx*sp;fy-=DRAG*b.vy*sp;
+  fx-=dk*DRAG*b.vx*sp;fy-=dk*DRAG*b.vy*sp;
   if(boostOn>0&&(any||tr.g)&&b.vx<380){fx+=BOOST_F*gtx;fy+=BOOST_F*gty;}
   if(momT>0&&any&&b.vx<460){fx+=momF*gtx;fy+=momF*gty;} // landing momentum
   let al=tq/I;
@@ -765,6 +883,7 @@ function phys(dt){
   for(const wh of wheels){
     const rx=wh.ox*ca-wh.oy*sa,ry=wh.ox*sa+wh.oy*ca,cx=b.x+rx,cy=b.y+ry;
     const gy=terrainH(cx),sl=slope(cx),nl=Math.hypot(1,sl),nx=-sl/nl,ny=1/nl;
+    if(Math.abs(sl)>WALL)continue;
     const pen=wh.r-(cy-gy)*ny;
     if(pen>PMAX){
       const corr=pen-PMAX;b.x+=nx*corr;b.y+=ny*corr;
@@ -775,6 +894,11 @@ function phys(dt){
   }
   stepTrailer(dt);
   if(live){
+    const f=featAt(b.x);
+    if(f&&f.gap)for(const wh of wheels){ // a wheel deep in the ravine: too short, the bike falls in
+      const cx=b.x+wh.ox*ca-wh.oy*sa,cy=b.y+wh.ox*sa+wh.oy*ca;
+      if(cx>f.x0-3&&cx<f.x0+f.w+3&&cy<f.rimLo-6){fallIn(f);return;}
+    }
     for(const p of HEAD){
       const wx=b.x+p[0]*ca-p[1]*sa,wy=b.y+p[0]*sa+p[1]*ca;
       if(wy<terrainH(wx)+0.3){crash();return;}
@@ -783,6 +907,13 @@ function phys(dt){
   }
 }
 
+function fallPhys(dt){ // fell into a gap: down between its walls, out of sight
+  const b=bike,f=fallF;
+  b.vy-=G*dt;
+  if((b.x<f.x0+12&&b.vx<0)||(b.x>f.x0+f.w-12&&b.vx>0))b.vx*=-0.3;
+  b.x+=b.vx*dt;b.y+=b.vy*dt;b.a+=b.w*dt;
+  stepTrailer(dt);
+}
 function groundSolve(hx,hy){ // where the trailer wheel rests on the ground, ARM behind the hitch
   const f=x=>Math.hypot(x-hx,terrainH(x)+TR_R-hy)-ARM;
   let lo=hx-ARM-2,hi2=hx;
@@ -793,7 +924,7 @@ function groundSolve(hx,hy){ // where the trailer wheel rests on the ground, ARM
 function stepTrailer(dt){
   const ox=tr.x,oy=tr.y,h=rearAxle();
   const vx=(tr.x-tr.px)*0.999,vy=(tr.y-tr.py)*0.999;
-  let nx=tr.x+vx,ny=tr.y+vy-G*dt*dt;
+  let nx=tr.x+vx,ny=tr.y+vy-G*(megaAir?MEGA_G:1)*dt*dt;
   const sol=groundSolve(h[0],h[1]);
   if(sol&&(tr.g||ny<=terrainH(nx)+TR_R+0.5)){ // rolling on the ground behind the bike
     nx=sol[0];ny=sol[1];tr.g=true;
@@ -817,10 +948,14 @@ function stepTrailer(dt){
 }
 
 // ================= tricks & boost =================
+const GAP_SEE=90,MEGA_SEE=150,GAP_KMH=50; // the HUD warns of a gap 90 m ahead (a mega gap 150 m), and asks for more speed below 50 km/h
 const CLOSE=PXM; // 1 m between the head and the ground, upside down in the air, makes a close call
 function tricks(dt){
   const rc=wheels[0].c,fc=wheels[1].c;
   if(!rc&&!fc){
+    if(airT===0){takeX=bike.x;const f=featAt(bike.x);megaAir=f&&f.mega&&Math.abs(bike.x-f.x0)<30?f:null; // off a mega kicker: the long float
+      const sp=Math.hypot(bike.vx,bike.vy),k=MEGA_V*1.08/sp;if(megaAir&&k<1){bike.vx*=k;bike.vy*=k;}}       // the kicker eats extra speed, so the landing hill fits
+    if(megaAir)speedFx=Math.max(speedFx,0.5);
     airT+=dt;airRot+=bike.w*dt;
     if(Math.cos(bike.a)<-0.3){ // upside down: how close does the head come to the ground?
       const ca=Math.cos(bike.a),sa=Math.sin(bike.a);
@@ -830,7 +965,7 @@ function tricks(dt){
     if(wheelieT>0)endWheelie();
   }else{
     if(airT>0.35||(slam&&airT>0.2))land(); // a slam from a tiny hop earns nothing
-    airT=0;airRot=0;closeMin=Infinity;slam=false;
+    airT=0;airRot=0;closeMin=Infinity;slam=false;megaAir=null;
     if(rc&&!fc&&bike.vx>25){wheelieT+=dt;if(wheelieT>0.5){charge(0.06*dt);trick+=18*dt;}}
     else if(wheelieT>0)endWheelie();
   }
@@ -842,10 +977,13 @@ function land(){
   let d=bike.a-ta;d=((d+Math.PI)%TAU+TAU)%TAU-Math.PI;
   const ad=Math.abs(d);
   let big=false;
+  const gf=featsOf(segOf(bike.x)).find(f=>f.gap&&takeX<f.x0+20&&bike.x>f.x0+f.w); // jumped right over a gap
+  const gn=gf?(gf.mega?'MEGA GAP ':'GAP '):'';
+  if(gf){st.gap++;if(!n){const p=gf.mega?400:100;trick+=p;charge(0.2);pop(gn+'JUMP +'+p,'#7df9ff');sfx('flip');}}
   if(n>0){
-    const p=150*n;trick+=p;flips+=n;charge(0.34*n);big=true;
-    pop((n>1?n+'X ':'')+(airRot>0?'BACKFLIP':'FRONTFLIP')+' +'+p,'#ffd23f');sfx('flip');
-    if(airRot>0)st.back+=n;else st.front+=n;st.multi=Math.max(st.multi,n);
+    const p=(gf?(gf.mega?500:300):150)*n;trick+=p;flips+=n;charge(0.34*n);big=true; // a flip over a gap counts double, over a mega gap more
+    pop(gn+(n>1?n+'X ':'')+(airRot>0?'BACKFLIP':'FRONTFLIP')+' +'+p,gf?'#7df9ff':'#ffd23f');sfx('flip');
+    if(airRot>0)st.back+=n;else st.front+=n;st.multi=Math.max(st.multi,n);if(gf)st.gapflip+=n;
   }
   st.air=Math.max(st.air,airT);
   if(closeMin<CLOSE){ // passed the ground upside down with the head almost touching, and got away with it
@@ -909,6 +1047,7 @@ function stopRide(snd,msg,col,sh,vib){ // a crash, or Cleo waking up: the ride e
   try{navigator.vibrate&&navigator.vibrate(vib);}catch(e){}
 }
 function crash(){stopRide('crash','CRASH!','#ff5555',0.45,120);}
+function fallIn(f){fallF=f;fallCam=cam.y;overWhy='FELL INTO THE GAP!';stopRide('fall','WHOOPS!','#8fe3ff',0.1,[60,40,160]);}
 function cleoWakes(){wakeT=0;overWhy='CLEO WOKE UP!';stopRide('scream','WAAAAH!','#ff9fd1',0.2,[80,60,80,60,160]);}
 function keepRiding(){ // after a completed level: carry on with the same ride, upright and standing still
   place(bike.x);napT=0;napArmed=false;
@@ -985,6 +1124,7 @@ function sfx(n){
     case 'level':[523,659,784,1046].forEach((f,i)=>tone(f,.14,{at:i*.11}));tone(1318,.4,{at:.44,vol:.06});tone(784,.4,{at:.44,type:'triangle',vol:.06});break;
     case 'start':tone(440,.08);tone(660,.12,{at:.08});break;
     case 'close':tone(1568,.06,{type:'triangle',vol:.06});tone(392,.18,{to:1200,type:'sawtooth',vol:.035,at:.05});tone(1760,.12,{at:.2,vol:.05});break;
+    case 'fall':tone(1200,.7,{to:180,type:'triangle',vol:.06});break;
     case 'tick':tone(880,.07,{type:'triangle',vol:.07});break;
     case 'scream':for(let k=0;k<3;k++){const a=k*.62;tone(620,.32,{to:980,type:'sawtooth',vol:.045,at:a});tone(980,.3,{to:520,type:'sawtooth',vol:.045,at:a+.32});tone(310,.6,{to:420,vol:.02,at:a});}break;
     case 'pop':tone(180+Math.random()*120,.18,{to:60,type:'triangle',vol:.05});break;
@@ -1188,7 +1328,7 @@ function update(dt){
     if(n>=24)acc=0;
   }
   if(wakeT>=0)wakeT+=dt;
-  if(state==='crash'){crashT+=dt;if(crashT>(wakeT>=0?2.4:1.4))gameOver();} // a screaming Cleo takes a little longer
+  if(state==='crash'){crashT+=dt;if(crashT>(wakeT>=0?2.4:fallF?2:1.4))gameOver();} // a screaming Cleo or a fall takes a little longer
   if(state==='over')overT+=dt;
   if(state==='win'){winT+=dt;
     if(winT<1.8&&Math.random()<0.8){ // confetti from the rider's raised hands
@@ -1213,6 +1353,7 @@ function update(dt){
     if(sig!==goalSig){if(goalSig&&introT>=3)goalsT=3;goalSig=sig;}
   }
   goalsT=Math.max(0,goalsT-dt);
+  napWarn=clamp(napWarn+(state==='play'&&napHold>0?dt*5:-dt*2.5),0,1);
   if(state==='play'&&!levelDone&&goals().length&&wheels[0].c&&wheels[1].c&&goals().every(goalMet))levelWon(); // all goals, back on the ground
   if(state==='play'){
     maxX=Math.max(maxX,bike.x);
@@ -1227,6 +1368,8 @@ function update(dt){
         if(napT>=WAKE_GRACE+WAKE_T)cleoWakes();
         else if(napT>WAKE_GRACE&&(t0<=WAKE_GRACE||Math.ceil(WAKE_GRACE+WAKE_T-napT)!==Math.ceil(WAKE_GRACE+WAKE_T-t0)))sfx('tick');} // a tick per second of the countdown
       else napT=0;
+      if(napT>0.5){napHold=1.6;napMsg=napT>WAKE_GRACE?'FASTER! CLEO WAKES IN':'SPEED UP! CLEO STIRS';} // after a short dip nothing shows
+      else napHold=Math.max(0,napHold-dt);
     }
     if(boostOn>0){boostOn-=dt;boost=Math.max(0,boostOn/BOOST_T);if(boostOn<=0)endBoost();}
     const seg=segOf(bike.x+BBL/2);
@@ -1246,8 +1389,8 @@ function update(dt){
   lead+=(clamp(bike.vx*0.35,-20,W*0.12)-lead)*Math.min(1,dt*2);
   camOff+=(((boostOn>0||pusher.on||pusher.leave)?0.47:0.3)-camOff)*Math.min(1,dt*2.5);
   cam.x=bike.x-W*camOff+lead;
-  cam.y+=(bike.y-cam.y)*Math.min(1,dt*6);
-  cam.y=clamp(cam.y,bike.y-H*0.3,bike.y+H*0.2);
+  if(fallF)cam.y=fallCam; // fell into a gap: the camera stays and the bike drops out of sight
+  else{const ty=bike.y-(megaAir?H*0.28:0);cam.y+=(ty-cam.y)*Math.min(1,dt*(megaAir?2.5:6));cam.y=clamp(cam.y,bike.y-H*0.3,bike.y+H*0.2);} // flying a mega gap: look down into it
   // fx
   for(const p of parts){p.l+=dt;p.x+=p.vx*dt;p.y+=p.vy*dt;p.vy-=G*0.25*dt;p.vx*=0.98;}
   parts=parts.filter(p=>p.l<p.m);
@@ -1836,6 +1979,11 @@ const NICHE=[
 ];
 const nSuit=new Float32Array(NICHE.length);
 const DCS=44;
+const GAP_SIGN=420; // the warning sign stands 35 m before a gap
+function featBusy(x,m){ // keep scenery off kickers, landings, ravines, bridges and the warning sign
+  const f=featAt(x,m);if(!f)return false;
+  return (x>f.busyLo-m&&x<f.busyHi+m)||(f.gap&&Math.abs(x-(f.x0-GAP_SIGN))<12+m);
+}
 function decorCand(c){ // deterministic candidate for cell c, or null
   const x=c*DCS+hash(c,SEED+601)*24;if(x<ELX+70)return null; // keep the start and the Elisenbrunnen clear
   climate(x);
@@ -1850,6 +1998,7 @@ function decorCand(c){ // deterministic candidate for cell c, or null
   for(let k=0;k<NICHE.length;k++){q-=nSuit[k];if(q<0){sp=NICHE[k][0];break;}}
   const kind=KIND.get(sp)||'small',sc=DSCALE*(kind==='tree'?0.88+0.24*hash(c,SEED+607):TINY.has(sp)?0.6:1); // trees vary in size
   const w=Math.round(sp.width*sc),h=Math.round(sp.height*sc);
+  if(featBusy(x,w/2))return null;
   const xl=x-w/2+1,xr=x+w/2-1,hl=terrainH(xl),hm=terrainH(x),hr=terrainH(xr);
   const steep=Math.max(Math.abs(hr-hl)/Math.max(1,xr-xl),Math.abs(slope(x)));
   const maxS=kind==='build'?0.22:kind==='animal'?0.3:kind==='tree'?0.75:0.9;
@@ -1882,6 +2031,10 @@ function drawDecor(){
   if(camXi<AL)drawStreet();
   { const sp=SPR.elisen,w=Math.round(sp.width*DSCALE),h=Math.round(sp.height*DSCALE),sx=Math.round(ELX-camXi-w/2);
     if(sx<W&&sx+w>0){const g=Math.min(terrainH(ELX-w/2+1),terrainH(ELX),terrainH(ELX+w/2-1));ctx.drawImage(sp,sx,Math.round(Hc-(g-camYi))-h+3,w,h);} }
+  for(let sg=segOf(camXi);sg<=segOf(camXi+W+GAP_SIGN);sg++)for(const f of featsOf(sg)){ // a warning sign before each gap
+    const sp=SPR.gapSign,x=f.x0-GAP_SIGN,w=Math.round(sp.width*DSCALE),h=Math.round(sp.height*DSCALE),sx=Math.round(x-camXi-w/2);
+    if(f.gap&&sx<W&&sx+w>0)ctx.drawImage(sp,sx,Math.round(Hc-(Math.min(terrainH(x-w/2+1),terrainH(x),terrainH(x+w/2-1))-camYi))-h+3,w,h);
+  }
   const c0=Math.floor((camXi-50)/DCS),c1=Math.floor((camXi+W+50)/DCS);
   let prev=decorCand(c0-1),cur=decorCand(c0);
   for(let c=c0;c<=c1;c++){
@@ -1897,15 +2050,73 @@ function drawDecor(){
     prev=cur;cur=next;
   }
 }
+const SHADE=[30,26,36];
+function ravineCol(i,wx,f){ // one column of the ravine under a bridge: its far bank in shade, then the water
+  const wl=f.hR-f.D,rim=f.hR;
+  const bank=rim-5-2*(1+noise(wx/13,SEED+931))-noise(wx/4,SEED+932);
+  const yb=Math.round(Hc-(bank-camYi)),yw=Math.round(Hc-(wl-camYi));
+  if(yb<yw){
+    ctx.fillStyle=rgbc(mix(gTop,SHADE,0.4));ctx.fillRect(i,yb,1,2);
+    ctx.fillStyle=rgbc(mix(gSoil,SHADE,0.4));ctx.fillRect(i,yb+2,1,yw-yb-2);
+    ctx.fillStyle=rgbc(mix(gDark,SHADE,0.45));
+    for(let k=0;k<4;k++){const y=yb+7+k*9+Math.round(2*noise(wx/17,SEED+933+k));if(y<yw-3)ctx.fillRect(i,y,1,1+(k&1));} // rock layers
+    ctx.fillRect(i,yw-2,1,2); // wet rock
+  }
+  const C=WATER[f.b];
+  ctx.fillStyle=rgbc(C);ctx.fillRect(i,yw,1,H-yw);
+  ctx.fillStyle=rgbc(mix(C,[12,24,48],0.4));ctx.fillRect(i,yw+5,1,H-yw-5);
+  ctx.fillStyle=(Math.floor(wx/3+time*4)%5===0)?'#ffffff':rgbc(mix(C,[255,255,255],0.45));ctx.fillRect(i,yw,1,1); // glinting surface
+}
+function drawBridges(){ // over their ravines, after the ground
+  for(let sg=segOf(camXi);sg<=segOf(camXi+W);sg++)for(const f of featsOf(sg)){
+    if(f.gap||f.x0+f.w+8<camXi||f.x0-8>camXi+W)continue;
+    let c=bridgeImg.get(f);if(!c){c=bridgeArt(f);bridgeImg.set(f,c);}
+    ctx.drawImage(c,Math.round(f.x0-8-camXi),Math.round(Hc-(f.hR-camYi))-6);
+  }
+}
+const CLB=9; // how far the rock of a cliff reaches into the solid ground at most
+function drawCliffs(){ // the rock walls of the gaps; between them the view drops away
+  for(let sg=segOf(camXi-20);sg<=segOf(camXi+W+20);sg++)for(const f of featsOf(sg)){
+    if(!f.gap||f.x0+f.w+CLB<camXi||f.x0-CLB>camXi+W)continue;
+    climate(f.x0+f.w/2);groundPal();
+    const rock=mix(mix(gSoil,gDark,0.4),[122,120,116],(0.12+0.4*pE)*(1-pA)); // the soil's own rock, greyer in the mountains
+    cliffWall(f.x0-1,1,mix(rock,SHADE,0.25),SEED+941);               // the near wall faces right, away from the light
+    cliffWall(f.x0+f.w+1,-1,mix(rock,[255,246,226],0.1),SEED+951);   // the far wall faces left, into the light
+  }
+}
+function cliffWall(xe,dir,base,s){ // xe: the last solid column; dir +1: the gap is to its right
+  const rim=terrainH(xe),ys=Math.round(Hc-(rim-camYi)); // screen row of the surface
+  const C=[mix(base,SHADE,0.55),mix(base,SHADE,0.28),base,mix(base,[255,248,232],0.22)].map(rgbc);
+  const out=d=>Math.max(0,Math.round(sstep(2,12,d)*(2.5+2.5*noise(d/7,s)+1.5*noise(d/2.5,s+1)))); // ledges stick out into the gap
+  for(let y=Math.max(0,ys+4);y<H;y++){
+    const d=y-ys,p=out(d),pu=out(d-1),back=Math.round(7+2.5*noise(d/5,s+2)+1.2*noise(d/1.7,s+3)); // back: where soil turns to rock
+    let run=-1,rx=0;
+    const flush=x=>{if(run>=0){ctx.fillStyle=C[run];ctx.fillRect(rx-camXi,y,x-rx,1);}run=-1;};
+    for(let x=dir>0?xe-back+1:xe-p;x<=(dir>0?xe+p:xe+back-1);x++){
+      const e=dir>0?xe-x:x-xe; // how far into the solid ground; negative: out on a ledge
+      let t=-1;
+      if(!(e>=back-3&&hash(x*57+d,s+6)<(e-back+4)/4)){ // a ragged seam to the soil
+        const v=0.6*noise(d/2.2+e*0.12,s+4)+0.4*noise(d/8+e*0.03,s+7),h=hash(x*131+d,s+5); // slanted, broken strata and grit
+        t=v>0.38?1:v<-0.42?3:2;if(h<0.07)t=0;else if(h>0.96)t=3;
+        if(e===-p)t=p>pu?3:dir>0||p<pu?0:3;                            // the face: shaded or lit, dark under a ledge
+        else if(e<-pu)t=3;                                                  // the lit top of a ledge
+        else if(dir>0&&e<=1-p&&t>1)t=1;                                     // the shaded side darkens towards its face
+      }
+      if(t!==run){flush(x);if(t>=0){run=t;rx=x;}}
+    }
+    flush(dir>0?xe+p+1:xe+back);
+  }
+}
 function drawGround(){
   let prevGy=terrainH(camXi-1),cell=NaN,cTop,cEdge,soil,dark;
   for(let i=0;i<W;i++){
     const wx=camXi+i,gy=terrainH(wx),sl=gy-prevGy;prevGy=gy;
-    const y0=Math.round(Hc-(gy-camYi));if(y0>=H)continue;
+    const rv=ravineAt(wx),y0=Math.round(Hc-(gy-camYi));if(y0>=H&&!rv)continue;
     if(Math.floor(wx/8)!==cell){ // the climate changes slowly: sample it every 8 world px
       cell=Math.floor(wx/8);climate(cell*8);groundPal();
       cTop=rgbc(gTop);cEdge=rgbc(gEdge);soil=rgbc(gSoil);dark=rgbc(gDark);
     }
+    if(rv){if(!rv.gap)ravineCol(i,wx,rv);continue;} // a gap: nothing, the view drops away
     let top=cTop,edge=cEdge;
     // snow on high, cold, mountainous ground; the snowline rises smoothly as the climate warms
     const snow=(1-sstep(0.12,0.26,pT))*sstep(0.55,0.8,pE);
@@ -2164,10 +2375,13 @@ function drawHUD(){
     txt(p.t,W/2,H*0.26+i*11-Math.min(p.a,0.3)*12,p.c,8,'center');
   });
   ctx.globalAlpha=1;
-  if(napT>WAKE_GRACE&&state==='play'){ // too slow for a while: Cleo is waking up
-    const y=Math.round(H*0.38);
-    txt('FASTER! CLEO WAKES',W/2,y,Math.floor(time*6)%2?'#ff9fd1':'#ffffff',8,'center');
-    outlined(String(Math.ceil(WAKE_GRACE+WAKE_T-napT)),W/2,y+12,24,'#ffffff','#e63946');
+  if(napWarn>0){ // too slow: Cleo stirs, then the countdown; steady, and it stays a moment after the speed is back
+    const y=Math.round(H*0.38),w=napMsg.length*8+12;
+    ctx.globalAlpha=napWarn;
+    ctx.fillStyle='rgba(15,10,30,.55)';ctx.fillRect(Math.round(W/2-w/2),y-4,w,16);
+    txt(napMsg,W/2,y,'#ff9fd1',8,'center');
+    if(napT>WAKE_GRACE&&state==='play')outlined(String(Math.ceil(WAKE_GRACE+WAKE_T-napT)),W/2,y+16,24,'#ffffff','#e63946');
+    ctx.globalAlpha=1;
   }
   if(banner){
     const a=banner.t<0.3?banner.t/0.3:(banner.t>2.3?1-(banner.t-2.3)/0.5:1);
@@ -2175,6 +2389,19 @@ function drawHUD(){
     const w=banner.text.length*8+16,y=34;
     ctx.fillStyle='rgba(15,10,30,.65)';ctx.fillRect(Math.round(W/2-w/2),y-4,w,16);
     txt(banner.text,W/2,y,'#ffd23f',8,'center');
+    ctx.globalAlpha=1;
+  }
+  const gf=state==='play'?nextGap(bike.x):null,gd=gf?(gf.x0-bike.x)/PXM:1e9;
+  const see=gf&&gf.mega?MEGA_SEE:GAP_SEE;
+  if(gd>0&&gd<see){ // a gap ahead: a warning with the distance, and a hint when too slow to clear it
+    const t=(gf.mega?'MEGA GAP ':'GAP AHEAD ')+Math.ceil(gd)+'M',w=t.length*8+22,x=Math.round(W/2-w/2),y=banner?52:34,slow=kmh<GAP_KMH;
+    ctx.globalAlpha=clamp((see-gd)/4,0,1);
+    ctx.fillStyle='rgba(15,10,30,.65)';ctx.fillRect(x,y-4,w,slow?27:16);
+    for(let r=0;r<9;r++){const hw=4-Math.abs(r-4);ctx.fillStyle='#1e1a14';ctx.fillRect(x+8-hw-1,y-1+r,2*hw+3,1);} // the sign's diamond
+    for(let r=1;r<8;r++){const hw=3-Math.abs(r-4);if(hw>=0){ctx.fillStyle='#ffd23f';ctx.fillRect(x+8-hw,y-1+r,2*hw+1,1);}}
+    ctx.fillStyle='#1e1a14';ctx.fillRect(x+8,y+1,1,3);ctx.fillRect(x+8,y+5,1,1);
+    txt(t,x+18,y,'#ffd23f',8,'left');
+    if(slow)txt('SPEED UP!',W/2,y+11,'#ff9f5a',8,'center');
     ctx.globalAlpha=1;
   }
 }
@@ -2310,6 +2537,8 @@ function render(){
   drawBackdrop();
   drawDecor();
   drawGround();
+  drawCliffs();
+  drawBridges();
   drawTrailer();
   if(pusher.on){
     const hand={x:pusher.hand.x-(1-pusher.a)*22,y:pusher.hand.y};
